@@ -1,88 +1,134 @@
-'use client';
+'use client'
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { FacebookIcon, Mail } from "lucide-react"
+import { useState } from 'react'
+import { motion } from 'framer-motion'
+import { Search, MapPin, Navigation, Compass, Menu } from 'lucide-react'
 import Link from 'next/link'
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 
-export default function LoginPage() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const router = useRouter();
+export default function HomePage() {
+  const [searchQuery, setSearchQuery] = useState('')
 
-  const handleLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    // Here you would typically validate the login credentials
-    // For this example, we'll just navigate to the bubbles page
-    router.push('/maps');
-  };
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault()
+    // Implement search functionality here
+    console.log('Searching for:', searchQuery)
+  }
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gray-100">
-      <Card className="w-full max-w-md">
-        <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl font-bold text-center">My Maps</CardTitle>
-          <CardDescription className="text-center">
-            Enter your email and password to login
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <form onSubmit={handleLogin}>
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input 
-                id="email" 
-                placeholder="m@example.com" 
-                required 
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <Input 
-                id="password" 
-                required 
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-            </div>
-            <Button className="w-full mt-4" type="submit">Login</Button>
-          </form>
-        </CardContent>
-        <CardFooter className="flex flex-col space-y-4">
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <span className="w-full border-t" />
-            </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-background px-2 text-muted-foreground">Or continue with</span>
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <Button variant="outline">
-              <Mail className="mr-2 h-4 w-4" />
-              Google
+    <div className="min-h-screen bg-gradient-to-br from-blue-500 to-purple-600 flex flex-col items-center justify-center p-4">
+      <header className="absolute top-0 left-0 right-0 flex justify-between items-center p-4">
+        <Link href="/">
+          <h1 className="text-2xl font-bold text-white">MyMaps</h1>
+        </Link>
+        <div className="flex items-center space-x-2">
+          <Link href="/signup" passHref>
+            <Button variant="secondary" className="bg-white text-blue-600 hover:bg-blue-100">
+              Sign Up
             </Button>
-            <Button variant="outline">
-              <FacebookIcon className="mr-2 h-4 w-4" />
-              Facebook
-            </Button>
-          </div>
-          <div className="text-sm text-center">
-            Don't have an account?{" "}
-            <Link href="/signup" className="underline">
-              Sign up
-            </Link>
-          </div>
-        </CardFooter>
-      </Card>
+          </Link>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="text-white">
+                <Menu className="h-6 w-6" />
+                <span className="sr-only">Open menu</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem>
+                <Link href="/about">About</Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem>
+                <Link href="/contact">Contact</Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem>
+                <Link href="/login">Login</Link>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </header>
+
+      <motion.div
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+        className="text-center mb-8"
+      >
+        <h2 className="text-4xl md:text-6xl font-bold text-white mb-2">Discover a New World</h2>
+        <p className="text-xl text-blue-100">Explore new places with My Maps</p>
+      </motion.div>
+
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.2 }}
+        className="w-full max-w-md mb-8"
+      >
+        <form onSubmit={handleSearch} className="relative">
+          <Input
+            type="text"
+            placeholder="Search for a place..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full px-4 py-2 rounded-full bg-white bg-opacity-20 text-white placeholder-blue-200 focus:outline-none focus:ring-2 focus:ring-white"
+          />
+          <Button type="submit" size="icon" className="absolute right-1 top-1/2 transform -translate-y-1/2 bg-white bg-opacity-20 hover:bg-opacity-30">
+            <Search className="h-4 w-4 text-blue-200" />
+            <span className="sr-only">Search</span>
+          </Button>
+        </form>
+      </motion.div>
+
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.4 }}
+        className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8"
+      >
+        {[
+          { name: 'Restaurants', icon: MapPin },
+          { name: 'Hotels', icon: Navigation },
+          { name: 'Attractions', icon: Compass },
+          { name: 'Events', icon: Search },
+        ].map((category) => (
+          <motion.div
+            key={category.name}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            className="bg-white bg-opacity-20 rounded-lg p-4 text-center cursor-pointer"
+          >
+            <category.icon className="mx-auto mb-2 text-white h-6 w-6" />
+            <p className="text-white font-medium">{category.name}</p>
+          </motion.div>
+        ))}
+      </motion.div>
+
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.6 }}
+      >
+        <Link href="/map" passHref>
+          <Button
+            size="lg"
+            className="bg-white text-blue-600 font-bold hover:bg-blue-100 transition duration-300"
+          >
+            Explore Map
+          </Button>
+        </Link>
+      </motion.div>
+
+      <footer className="absolute bottom-0 left-0 right-0 text-center p-4 text-white text-sm">
+        © 2023 MyMaps. All rights reserved.
+      </footer>
     </div>
   )
 }
