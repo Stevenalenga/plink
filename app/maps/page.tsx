@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Search, User, MessageSquare, Bell, Settings } from 'lucide-react'
 import Link from 'next/link'
-import CustomMarker, {CustomMarkerProps} from '@/components/ui/CustomMarker'
+import CustomMarker, {CustomMarkerProps} from '@/components/ui/custommarker'
 
 
 
