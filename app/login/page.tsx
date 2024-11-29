@@ -14,44 +14,50 @@ import { SocialLoginButtons } from './social-login-buttons'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Menu } from 'lucide-react'
 
+
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
-  const { toast } = useToast();
+  const { addToast } = useToast();
 
   const handleLogin = useCallback(async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsLoading(true);
 
     try {
-      const result = await signIn('credentials', {
-        redirect: false,
-        email,
-        password,
+      const formData = new FormData();
+      formData.append('username', email); // Adjusted to use 'username' instead of 'email'
+      formData.append('password', password);
+
+      const response = await fetch('http://localhost:8000/api/v3/login', {
+        method: 'POST',
+        body: formData,
       });
 
-      if (result?.error) {
-        toast({
-          title: "Error",
-          description: result.error === "CredentialsSignin" ? "Invalid email or password" : "An unexpected error occurred",
-          variant: "destructive",
-        });
-      } else {
-        router.push('/maps');
+      if (!response.ok) {
+        throw new Error('Login failed');
       }
+
+      const data = await response.json();
+
+      // Assuming the response contains a token or some user data
+      // You can store the token in localStorage or context
+      // localStorage.setItem('token', data.access_token);
+
+      router.push('/maps');
     } catch (error) {
       console.error('Login error:', error);
-      toast({
-        title: "Error",
-        description: "An unexpected error occurred",
-        variant: "destructive",
+      addToast({
+        title: 'Error',
+        description: 'Login failed. Please try again.',
+        variant: 'destructive',
       });
     } finally {
       setIsLoading(false);
     }
-  }, [email, password, router, toast]);
+  }, [email, password, router, addToast]);
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-gray-100">
@@ -129,7 +135,7 @@ export default function LoginPage() {
               <span className="bg-background px-2 text-muted-foreground">Or continue with</span>
             </div>
           </div>
-          <SocialLoginButtons isLoading={isLoading} />
+          <SocialLoginButtons isLoading={isLoading} className="w-1/2 mx-auto" />
           <div className="text-sm text-center">
             Don't have an account?{" "}
             <Link href="/signup" className="underline">
@@ -141,4 +147,3 @@ export default function LoginPage() {
     </div>
   )
 }
-
