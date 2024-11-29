@@ -28,13 +28,7 @@ export default function HomePage() {
         <Link href="/">
           <h1 className="text-2xl font-bold text-white">MyMaps</h1>
         </Link>
-        <div className="flex items-center space-x-2">
-          <Link href="/signup" passHref>
-            <Button variant="secondary" className="bg-white text-blue-600 hover:bg-blue-100">
-              Sign Up
-            </Button>
-          </Link>
-          <DropdownMenu>
+        <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" className="text-white">
                 <Menu className="h-6 w-6" />
@@ -53,7 +47,6 @@ export default function HomePage() {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-        </div>
       </header>
 
       <motion.div

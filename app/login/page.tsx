@@ -11,6 +11,8 @@ import { Label } from "@/components/ui/label"
 import Link from 'next/link'
 import { useToast } from "@/components/ui/useToast"
 import { SocialLoginButtons } from './social-login-buttons'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { Menu } from 'lucide-react'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -53,6 +55,32 @@ export default function LoginPage() {
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-gray-100">
+      <header className="absolute top-0 left-0 right-0 flex justify-between items-center p-4">
+        <Link href="/">
+          <h1 className="text-2xl font-bold text-black">MyMaps</h1>
+        </Link>
+        <div className="flex items-center space-x-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="text-black">
+                <Menu className="h-6 w-6" />
+                <span className="sr-only">Open menu</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem>
+                <Link href="/about">About</Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem>
+                <Link href="/contact">Contact</Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem>
+                <Link href="/signup">Sign Up</Link>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </header>
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1">
           <CardTitle className="text-2xl font-bold text-center">My Maps</CardTitle>

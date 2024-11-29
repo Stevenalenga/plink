@@ -1,6 +1,8 @@
 import Link from 'next/link'
 import { Button } from "@/components/ui/button"
 import ContactForm from './contact-form'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { Menu } from 'lucide-react'
 
 export const metadata = {
   title: 'Contact MyMaps',
@@ -14,9 +16,30 @@ export default function ContactPage() {
                 <Link href="/" aria-label="MyMaps Home">
                     <h1 className="text-2xl font-bold text-white">MyMaps</h1>
                 </Link>
-                <Button variant="secondary" asChild className="bg-white text-red-600 hover:bg-red-100">
-                    <Link href="/">Home</Link>
-                </Button>
+                <div className="flex items-center space-x-2">
+                  <Button variant="secondary" asChild className="bg-white text-red-600 hover:bg-red-100">
+                      <Link href="/">Home</Link>
+                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon" className="text-white">
+                        <Menu className="h-6 w-6" />
+                        <span className="sr-only">Open menu</span>
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem>
+                        <Link href="/about">About</Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem>
+                        <Link href="/contact">Contact</Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem>
+                        <Link href="/login">Login</Link>
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
             </header>
 
             <main className="w-full max-w-md">
