@@ -1,25 +1,55 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { signIn } from 'next-auth/react';
 import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { FacebookIcon, Mail } from "lucide-react"
 import Link from 'next/link'
+import { useToast } from "@/components/ui/useToast"
+import { SocialLoginButtons } from './social-login-buttons'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
+  const { toast } = useToast();
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = useCallback(async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    // Here you would typically validate the login credentials
-    // For this example, we'll just navigate to the bubbles page
-    router.push('/maps');
-  };
+    setIsLoading(true);
+
+    try {
+      const result = await signIn('credentials', {
+        redirect: false,
+        email,
+        password,
+      });
+
+      if (result?.error) {
+        toast({
+          title: "Error",
+          description: result.error === "CredentialsSignin" ? "Invalid email or password" : "An unexpected error occurred",
+          variant: "destructive",
+        });
+      } else {
+        router.push('/maps');
+      }
+    } catch (error) {
+      console.error('Login error:', error);
+      toast({
+        title: "Error",
+        description: "An unexpected error occurred",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  }, [email, password, router, toast]);
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-gray-100">
@@ -53,11 +83,17 @@ export default function LoginPage() {
                 onChange={(e) => setPassword(e.target.value)}
               />
             </div>
-            <Button className="w-full mt-4" type="submit">Login</Button>
+            <Button 
+              className="w-full mt-4 hover:bg-blue-600" 
+              type="submit" 
+              disabled={isLoading}
+            >
+              {isLoading ? 'Logging in...' : 'Login'}
+            </Button>
           </form>
         </CardContent>
         <CardFooter className="flex flex-col space-y-4">
-          <div className="relative">
+          <div className="relative w-full">
             <div className="absolute inset-0 flex items-center">
               <span className="w-full border-t" />
             </div>
@@ -65,16 +101,7 @@ export default function LoginPage() {
               <span className="bg-background px-2 text-muted-foreground">Or continue with</span>
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <Button variant="outline">
-              <Mail className="mr-2 h-4 w-4" />
-              Google
-            </Button>
-            <Button variant="outline">
-              <FacebookIcon className="mr-2 h-4 w-4" />
-              Facebook
-            </Button>
-          </div>
+          <SocialLoginButtons isLoading={isLoading} />
           <div className="text-sm text-center">
             Don't have an account?{" "}
             <Link href="/signup" className="underline">
@@ -86,3 +113,4 @@ export default function LoginPage() {
     </div>
   )
 }
+

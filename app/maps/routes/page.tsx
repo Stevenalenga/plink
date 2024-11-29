@@ -121,7 +121,7 @@ export default function MapPage() {
     }
   }
 
-  if (loadError) return <ErrorMessage message="Error loading maps. Please check your internet connection." />
+  if (loadError) return <ErrorMessage error={new Error("Error loading maps. Please check your internet connection or try again later.")} reset={() => window.location.reload()} />
   if (!isLoaded) return <div className="flex items-center justify-center h-screen">Loading maps...</div>
 
   return (
@@ -250,7 +250,7 @@ export default function MapPage() {
             ))}
           </GoogleMap>
         </div>
-        {errorMessage && <ErrorMessage message={errorMessage} />}
+        {errorMessage && <ErrorMessage error={new Error(errorMessage)} reset={() => setErrorMessage(null)} />}
       </main>
     </div>
   )
