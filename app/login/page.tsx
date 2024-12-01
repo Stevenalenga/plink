@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { signIn } from 'next-auth/react';
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import Link from 'next/link'
@@ -20,7 +20,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
-  const { addToast } = useToast();
+  const { toast } = useToast();
 
   const handleLogin = useCallback(async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -41,34 +41,70 @@ export default function LoginPage() {
       }
 
       const data = await response.json();
+      console.log('Login response:', data);
+      if (!response.ok) {
+        let errorMessage = 'An error occurred during login. Please try again.';
+
+        switch (response.status) {
+          case 400:
+            errorMessage = 'Invalid email or password. Please check your credentials.';
+            break;
+          case 401:
+            errorMessage = 'Unauthorized. Please check your credentials.';
+            break;
+          case 403:
+            errorMessage = 'Access forbidden. Please contact support.';
+            break;
+          case 404:
+            errorMessage = 'Login service not found. Please try again later.';
+            break;
+          case 500:
+            errorMessage = 'Server error. Please try again later.';
+            break;
+        }
+
+        throw new Error(errorMessage);
+      }
 
       // Assuming the response contains a token or some user data
       // You can store the token in localStorage or context
       // localStorage.setItem('token', data.access_token);
 
+      toast({
+        title: "Success",
+        description: "You have successfully logged in.",
+      });
+
       router.push('/maps');
     } catch (error) {
-      console.error('Login error:', error);
-      addToast({
-        title: 'Error',
-        description: 'Login failed. Please try again.',
-        variant: 'destructive',
-      });
+      if (error instanceof TypeError && error.message === 'Failed to fetch') {
+        console.error('Network error:', error);
+        toast({
+          title: 'Network Error',
+          description: 'Failed to connect to the server. Please check your internet connection and try again.',
+        });
+      } else {
+        console.error('Login error:', error);
+        toast({
+          title: 'Error',
+          description: error instanceof Error ? error.message : 'An unexpected error occurred',
+        });
+      }
     } finally {
       setIsLoading(false);
     }
-  }, [email, password, router, addToast]);
+  }, [email, password, router, toast]);
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gray-100">
+    <div className="flex items-center justify-center min-h-screen bg-background">
       <header className="absolute top-0 left-0 right-0 flex justify-between items-center p-4">
         <Link href="/">
-          <h1 className="text-2xl font-bold text-black">MyMaps</h1>
+          <h1 className="text-2xl font-bold">MyMaps</h1>
         </Link>
         <div className="flex items-center space-x-2">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="text-black">
+              <Button variant="ghost" size="icon">
                 <Menu className="h-6 w-6" />
                 <span className="sr-only">Open menu</span>
               </Button>
@@ -118,7 +154,7 @@ export default function LoginPage() {
               />
             </div>
             <Button 
-              className="w-full mt-4 hover:bg-blue-600" 
+              className="w-full mt-4" 
               type="submit" 
               disabled={isLoading}
             >
@@ -135,7 +171,7 @@ export default function LoginPage() {
               <span className="bg-background px-2 text-muted-foreground">Or continue with</span>
             </div>
           </div>
-          <SocialLoginButtons isLoading={isLoading} className="w-1/2 mx-auto" />
+          <SocialLoginButtons isLoading={isLoading} />
           <div className="text-sm text-center">
             Don't have an account?{" "}
             <Link href="/signup" className="underline">

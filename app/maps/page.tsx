@@ -12,6 +12,7 @@ import Link from 'next/link'
 import CustomMarker from '@/components/ui/custom-teardrop-marker'
 import ErrorMessage from '@/errors/errors'
 import { LocationDetails } from './location-details'
+import Sidebar from '@/components/ui/sidebar/sidebar';
 
 const mapContainerStyle = {
   width: '100%',
@@ -47,7 +48,7 @@ interface Comment {
   date: string
 }
 
-export default function MapPage() {
+const MapsPage = () => {
   const [searchQuery, setSearchQuery] = useState('')
   const [map, setMap] = useState<google.maps.Map | null>(null)
   const searchBoxRef = useRef<google.maps.places.SearchBox | null>(null)
@@ -160,42 +161,20 @@ export default function MapPage() {
   if (!isLoaded) return <div className="flex items-center justify-center h-screen">Loading maps...</div>
 
   return (
-    <div className="h-screen flex flex-col">
-      <header className="bg-white shadow-md p-4">
-        <div className="container mx-auto flex justify-between items-center">
-          <Link href="/" className="text-2xl font-bold text-blue-600">
-            My Maps
-          </Link>
-          <div className="flex items-center space-x-4">
-            <Link href="/profile">
-              <Button variant="ghost" size="icon">
-                <User className="h-5 w-5" />
-                <span className="sr-only">Profile</span>
-              </Button>
-            </Link>
-            <Link href="/messages">
-              <Button variant="ghost" size="icon">
-                <MessageSquare className="h-5 w-5" />
-                <span className="sr-only">Messages</span>
-              </Button>
-            </Link>
-            <Link href="/notifications">
-              <Button variant="ghost" size="icon">
-                <Bell className="h-5 w-5" />
-                <span className="sr-only">Notifications</span>
-              </Button>
-            </Link>
+    <div className="flex h-screen">
+      <Sidebar />
+      <main className="flex-1 flex flex-col">
+        <header className="p-4 bg-primary text-primary-foreground">
+          <div className="flex justify-between items-center">
+            <h1 className="text-2xl">Maps</h1>
             <Link href="/settings">
-              <Button variant="ghost" size="icon">
-                <Settings className="h-5 w-5" />
+              <Button>
                 <span className="sr-only">Settings</span>
               </Button>
             </Link>
           </div>
-        </div>
-      </header>
-      <main className="flex-1 flex">
-        <div className="flex-1 flex flex-col">
+        </header>
+        <div className="flex-1 p-4">
           <div id="search-container" className="p-4 flex items-center space-x-2">
             <form onSubmit={handleSearch} className="flex items-center space-x-2 flex-grow">
               <Input
@@ -305,3 +284,5 @@ export default function MapPage() {
     </div>
   )
 }
+
+export default MapsPage;
