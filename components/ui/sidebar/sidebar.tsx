@@ -32,20 +32,36 @@ const settingsNavItems: NavItem[] = [
   { title: 'Notifications', href: '/notifications', icon: 'Bell' },
 ]
 
-const Sidebar =() => {
+interface SidebarProps {
+  onCollapse?: (collapsed: boolean) => void;
+}
+
+const Sidebar: React.FC<SidebarProps> = ({ onCollapse }) => {
   const [collapsed, setCollapsed] = useState(false)
   const pathname = usePathname()
 
   useEffect(() => {
     const handleResize = () => {
-      setCollapsed(window.innerWidth < 768)
+      const newCollapsed = window.innerWidth < 768
+      setCollapsed(newCollapsed)
+      if (onCollapse) {
+        onCollapse(newCollapsed)
+      }
     }
 
     window.addEventListener('resize', handleResize)
     handleResize()
 
     return () => window.removeEventListener('resize', handleResize)
-  }, [])
+  }, [onCollapse])
+
+  const handleToggleCollapse = () => {
+    const newCollapsed = !collapsed
+    setCollapsed(newCollapsed)
+    if (onCollapse) {
+      onCollapse(newCollapsed)
+    }
+  }
 
   return (
     <motion.nav
@@ -74,7 +90,7 @@ const Sidebar =() => {
         <Button
           variant="ghost"
           size="icon"
-          onClick={() => setCollapsed(!collapsed)}
+          onClick={handleToggleCollapse}
           className="rounded-full"
         >
           <Icons.panelLeft className="h-4 w-4" />
@@ -184,6 +200,5 @@ function NavItem({ item, collapsed }: { item: NavItem; collapsed: boolean }) {
   )
 }
 
-
-
 export default Sidebar;
+

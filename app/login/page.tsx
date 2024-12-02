@@ -1,19 +1,17 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { signIn } from 'next-auth/react';
 import { Button } from "@/components/ui/button"
-import { cn } from "@/lib/utils"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import Link from 'next/link'
-import { useToast } from "@/components/ui/useToast"
+import { useToast } from "@/hooks/use-toast"
 import { SocialLoginButtons } from './social-login-buttons'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Menu } from 'lucide-react'
-
+import { useAuth } from '../contexts/AuthContext'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -21,14 +19,23 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
   const { toast } = useToast();
+  const { login } = useAuth();
+
+  useEffect(() => {
+    console.log('LoginPage mounted');
+    return () => {
+      console.log('LoginPage unmounted');
+    };
+  }, []);
 
   const handleLogin = useCallback(async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsLoading(true);
+    console.log('Login attempt started');
 
     try {
       const formData = new FormData();
-      formData.append('username', email); // Adjusted to use 'username' instead of 'email'
+      formData.append('username', email);
       formData.append('password', password);
 
       const response = await fetch('http://localhost:8000/api/v3/login', {
@@ -36,64 +43,40 @@ export default function LoginPage() {
         body: formData,
       });
 
-      if (!response.ok) {
-        throw new Error('Login failed');
-      }
-
       const data = await response.json();
-      console.log('Login response:', data);
+      console.log('Full login response:', data);
+
       if (!response.ok) {
-        let errorMessage = 'An error occurred during login. Please try again.';
-
-        switch (response.status) {
-          case 400:
-            errorMessage = 'Invalid email or password. Please check your credentials.';
-            break;
-          case 401:
-            errorMessage = 'Unauthorized. Please check your credentials.';
-            break;
-          case 403:
-            errorMessage = 'Access forbidden. Please contact support.';
-            break;
-          case 404:
-            errorMessage = 'Login service not found. Please try again later.';
-            break;
-          case 500:
-            errorMessage = 'Server error. Please try again later.';
-            break;
-        }
-
-        throw new Error(errorMessage);
+        throw new Error(data.detail || 'Login failed');
       }
 
-      // Assuming the response contains a token or some user data
-      // You can store the token in localStorage or context
-      // localStorage.setItem('token', data.access_token);
+      if (data.access_token) {
+        login(data.access_token);
+        console.log('Access token received and stored');
 
-      toast({
-        title: "Success",
-        description: "You have successfully logged in.",
-      });
-
-      router.push('/maps');
-    } catch (error) {
-      if (error instanceof TypeError && error.message === 'Failed to fetch') {
-        console.error('Network error:', error);
         toast({
-          title: 'Network Error',
-          description: 'Failed to connect to the server. Please check your internet connection and try again.',
+          title: "Success",
+          description: "You have successfully logged in.",
         });
+
+        console.log('Attempting to navigate to /maps');
+        router.push('/maps');
       } else {
-        console.error('Login error:', error);
-        toast({
-          title: 'Error',
-          description: error instanceof Error ? error.message : 'An unexpected error occurred',
-        });
+        console.error('No access token in response');
+        throw new Error('No access token received');
       }
+    } catch (error) {
+      console.error('Login error:', error);
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'An unexpected error occurred',
+        variant: 'destructive',
+      });
     } finally {
       setIsLoading(false);
+      console.log('Login attempt finished');
     }
-  }, [email, password, router, toast]);
+  }, [email, password, router, toast, login]);
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-background">
@@ -183,3 +166,4 @@ export default function LoginPage() {
     </div>
   )
 }
+
