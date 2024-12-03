@@ -170,7 +170,7 @@ const MapsPage = () => {
   if (!isLoaded) return <div className="flex items-center justify-center h-screen">Loading maps...</div>;
 
   return (
-    <div className="flex flex-col h-screen">
+    <div className="flex flex-col h-screen relative">
       <header className="flex justify-between items-center p-4 bg-primary text-primary-foreground">
         <h1 className="text-2xl font-bold">Maps</h1>
         <div className="flex items-center space-x-4">
@@ -255,7 +255,6 @@ const MapsPage = () => {
               </div>
             </PopoverContent>
           </Popover>
-          <Navbar />
         </div>
       </header>
       <main className="flex-1 relative">
@@ -286,9 +285,9 @@ const MapsPage = () => {
           />
         )}
       </main>
+      <Navbar />
     </div>
   );
 }
 
 export default MapsPage;
-

@@ -1,9 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import React, { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { User, Info, Mail, Menu, X } from 'lucide-react'
 import Link from 'next/link'
+import Draggable from 'react-draggable'
+
 
 const navItems = [
   { icon: User, label: 'Profile', href: '/profile' },
@@ -16,58 +18,60 @@ export function Navbar() {
   const [activeItem, setActiveItem] = useState<number | null>(null)
 
   return (
-    <nav className="fixed bottom-4 right-4 z-50">
-      <AnimatePresence>
-        {isOpen && (
-          <motion.div
-            initial={{ width: 0 }}
-            animate={{ width: 'auto' }}
-            exit={{ width: 0 }}
-            className="absolute bottom-0 right-16 bg-primary rounded-full overflow-hidden flex items-center"
-          >
-            {navItems.map((item, index) => (
-              <button
-                key={item.label}
-                onClick={() => setActiveItem(activeItem === index ? null : index)}
-                className="p-4 text-primary-foreground hover:bg-primary-dark transition-colors"
-              >
-                <item.icon size={24} />
-              </button>
-            ))}
-          </motion.div>
-        )}
-      </AnimatePresence>
+    <Draggable bounds="parent">
+      <nav className="absolute z-50 cursor-move">
+        <AnimatePresence>
+          {isOpen && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="absolute top-full right-0 mt-2 bg-primary rounded-lg overflow-hidden shadow-lg"
+            >
+              {navItems.map((item, index) => (
+                <button
+                  key={item.label}
+                  onClick={() => setActiveItem(activeItem === index ? null : index)}
+                  className="flex items-center w-full p-3 text-primary-foreground hover:bg-primary-dark transition-colors"
+                >
+                  <item.icon size={20} className="mr-2" />
+                  <span>{item.label}</span>
+                </button>
+              ))}
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-      <AnimatePresence>
-        {activeItem !== null && (
-          <motion.div
-            initial={{ height: 0 }}
-            animate={{ height: 'auto' }}
-            exit={{ height: 0 }}
-            className="absolute bottom-16 right-0 bg-background rounded-lg overflow-hidden shadow-lg"
-          >
-            <div className="p-4">
-              <h2 className="text-lg font-semibold mb-2">{navItems[activeItem].label}</h2>
-              <ul className="space-y-2">
-                <li>
-                  <Link href={navItems[activeItem].href} className="text-primary hover:underline">
-                    Go to {navItems[activeItem].label}
-                  </Link>
-                </li>
-                {/* Add more links as needed */}
-              </ul>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+        <AnimatePresence>
+          {activeItem !== null && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="absolute top-full right-0 mt-2 bg-background rounded-lg overflow-hidden shadow-lg"
+            >
+              <div className="p-4">
+                <h2 className="text-lg font-semibold mb-2">{navItems[activeItem].label}</h2>
+                <ul className="space-y-2">
+                  <li>
+                    <Link href={navItems[activeItem].href} className="text-primary hover:underline">
+                      Go to {navItems[activeItem].label}
+                    </Link>
+                  </li>
+                  {/* Add more links as needed */}
+                </ul>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="bg-primary text-primary-foreground w-16 h-16 rounded-full flex items-center justify-center shadow-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary"
-      >
-        {isOpen ? <X size={24} /> : <Menu size={24} />}
-      </button>
-    </nav>
+        <button
+          onClick={() => setIsOpen(!isOpen)}
+          className="bg-primary-dark text-primary-foreground p-2 rounded-full flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary"
+        >
+          {isOpen ? <X size={24} /> : <Menu size={24} />}
+        </button>
+      </nav>
+    </Draggable>
   )
 }
-
