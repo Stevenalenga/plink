@@ -1,9 +1,10 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
+import Draggable from 'react-draggable'
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -38,7 +39,14 @@ interface SidebarProps {
 
 const Sidebar: React.FC<SidebarProps> = ({ onCollapse }) => {
   const [collapsed, setCollapsed] = useState(false)
+  const [position, setPosition] = useState({ x: 0, y: 0 })
   const pathname = usePathname()
+  const [isClient, setIsClient] = useState(false);
+  const sidebarRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
   useEffect(() => {
     const handleResize = () => {
@@ -63,65 +71,86 @@ const Sidebar: React.FC<SidebarProps> = ({ onCollapse }) => {
     }
   }
 
+  const handleDrag = (e: any, data: { x: number; y: number }) => {
+    setPosition({ x: data.x, y: data.y })
+  }
+
+  if (!isClient) {
+    return null;
+  }
+
   return (
-    <motion.nav
-      className={cn(
-        "flex flex-col h-screen bg-sidebar text-sidebar-foreground transition-all duration-300 ease-in-out rounded-3xl overflow-hidden",
-        collapsed ? "w-20" : "w-64"
-      )}
-      animate={{ width: collapsed ? 80 : 256 }}
+    <Draggable
+      position={position}
+      onDrag={handleDrag}
+      handle=".drag-handle"
     >
-      <div className="flex items-center justify-between p-4">
-        <Link href="/" className="flex items-center space-x-2">
-          <Icons.logo className="h-6 w-6" />
-        </Link>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={handleToggleCollapse}
-          className="rounded-full"
-        >
-          <Icons.panelLeft className="h-4 w-4" />
-        </Button>
-      </div>
-
-      <div className="px-4 mb-4">
-        <div className="relative">
-          <Icons.search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 transform" />
-          <Input
-            type="search"
-            placeholder={collapsed ? "" : "Search..."}
-            className="pl-8 rounded-full"
-          />
+      <motion.nav
+        ref={sidebarRef}
+        className={cn(
+          "flex flex-col h-screen bg-sidebar text-sidebar-foreground transition-all duration-300 ease-in-out rounded-[2rem] overflow-hidden shadow-lg",
+          collapsed ? "w-20" : "w-64"
+        )}
+        animate={{ width: collapsed ? 80 : 256 }}
+        style={{
+          position: 'fixed',
+          top: position.y,
+          left: position.x,
+          zIndex: 1000,
+        }}
+      >
+        <div className="flex items-center justify-between p-4 drag-handle cursor-move">
+          <Link href="/" className="flex items-center space-x-2">
+            <Icons.logo className="h-6 w-6" />
+          </Link>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={handleToggleCollapse}
+            className="rounded-full"
+          >
+            <Icons.panelLeft className="h-4 w-4" />
+          </Button>
         </div>
-      </div>
 
-      <div className="flex-1 overflow-y-auto">
-        <NavSection title="Main" items={mainNavItems} collapsed={collapsed} />
-        <NavSection title="Settings" items={settingsNavItems} collapsed={collapsed} />
-      </div>
-
-      <div className="p-4 border-t border-sidebar-border">
-        <div className="flex items-center space-x-4">
-          <Avatar>
-            <AvatarImage src="/avatars/01.png" alt="Joe Doe" />
-            <AvatarFallback>JD</AvatarFallback>
-          </Avatar>
-          <AnimatePresence>
-            {!collapsed && (
-              <motion.div
-                initial={{ opacity: 0, width: 0 }}
-                animate={{ opacity: 1, width: 'auto' }}
-                exit={{ opacity: 0, width: 0 }}
-              >
-                <p className="text-sm font-medium">Joe Doe</p>
-                <p className="text-xs text-sidebar-foreground/70">joe.doe@example.com</p>
-              </motion.div>
-            )}
-          </AnimatePresence>
+        <div className="px-4 mb-4">
+          <div className="relative">
+            <Icons.search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 transform" />
+            <Input
+              type="search"
+              placeholder={collapsed ? "" : "Search..."}
+              className="pl-8 rounded-full"
+            />
+          </div>
         </div>
-      </div>
-    </motion.nav>
+
+        <div className="flex-1 overflow-y-auto">
+          <NavSection title="Main" items={mainNavItems} collapsed={collapsed} />
+          <NavSection title="Settings" items={settingsNavItems} collapsed={collapsed} />
+        </div>
+
+        <div className="p-4 border-t border-sidebar-border">
+          <div className="flex items-center space-x-4">
+            <Avatar>
+              <AvatarImage src="/avatars/01.png" alt="Joe Doe" />
+              <AvatarFallback>JD</AvatarFallback>
+            </Avatar>
+            <AnimatePresence>
+              {!collapsed && (
+                <motion.div
+                  initial={{ opacity: 0, width: 0 }}
+                  animate={{ opacity: 1, width: 'auto' }}
+                  exit={{ opacity: 0, width: 0 }}
+                >
+                  <p className="text-sm font-medium">Joe Doe</p>
+                  <p className="text-xs text-sidebar-foreground/70">joe.doe@example.com</p>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        </div>
+      </motion.nav>
+    </Draggable>
   )
 }
 

@@ -15,23 +15,14 @@ import { LocationDetails } from './location-details';
 import Sidebar from '@/components/ui/sidebar/sidebar';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../contexts/AuthContext';
+import Draggable from 'react-draggable';
 
 const mapContainerStyle = {
   width: '100%',
-  height: 'calc(100vh - 64px)',
-  position: 'relative' as const,
-};
-
-const sidebarStyle = {
-  position: 'absolute',
-  top: '10px',
-  left: '10px',
-  zIndex: 10,
-  width: '200px',
-  height: 'calc(100vh - 84px)',
-  backgroundColor: 'rgba(255, 255, 255, 0.9)',
-  boxShadow: '0 2px 10px rgba(0, 0, 0, 0.1)',
-  borderRadius: '10px',
+  height: '100vh',
+  position: 'absolute' as const,
+  top: 0,
+  left: 0,
 };
 
 const center = {
@@ -188,10 +179,14 @@ const MapsPage = () => {
   if (!isLoaded) return <div className="flex items-center justify-center h-screen">Loading maps...</div>;
 
   return (
-    <div className="flex h-screen">
-      <Sidebar />
+    <div className="relative h-screen">
+      <Draggable>
+        <div>
+          <Sidebar />
+        </div>
+      </Draggable>
       <main className="flex-1 flex flex-col">
-        <header className="p-4 bg-primary text-primary-foreground">
+        <header className="p-4 bg-primary text-primary-foreground absolute top-0 left-0 right-0 z-10">
           <div className="flex justify-between items-center">
             <h1 className="text-2xl">Maps</h1>
             <Link href="/settings">
@@ -201,85 +196,85 @@ const MapsPage = () => {
             </Link>
           </div>
         </header>
-        <div className="flex-1 p-4 relative">
-          <div id="search-container" className="p-4 flex items-center space-x-2 absolute top-0 right-0 z-10">
-            <form onSubmit={handleSearch} className="flex items-center space-x-2 flex-grow">
-              <Input
-                id="search-input"
-                type="text"
-                placeholder="Search for places..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="flex-grow"
-              />
-              <Button type="submit" variant="default">
-                <Search className="h-5 w-5" />
-                <span className="sr-only">Search</span>
+        <div id="search-container" className="p-4 flex items-center space-x-2 absolute top-4 right-4 z-20">
+          <form onSubmit={handleSearch} className="flex items-center space-x-2 flex-grow">
+            <Input
+              id="search-input"
+              type="text"
+              placeholder="Search for places..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="flex-grow"
+            />
+            <Button type="submit" variant="default">
+              <Search className="h-5 w-5" />
+              <span className="sr-only">Search</span>
+            </Button>
+          </form>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="icon">
+                <Save className="h-5 w-5" />
+                <span className="sr-only">Save location</span>
               </Button>
-            </form>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="outline" size="icon">
-                  <Save className="h-5 w-5" />
-                  <span className="sr-only">Save location</span>
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-80">
-                <div className="grid gap-4">
-                  <div className="space-y-2">
-                    <h4 className="font-medium leading-none">Save Location</h4>
-                    <p className="text-sm text-muted-foreground">
-                      Fill in the details to save this location.
-                    </p>
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="name">Name</Label>
-                    <Input
-                      id="name"
-                      value={saveFormData.name}
-                      onChange={(e) => setSaveFormData(prev => ({ ...prev, name: e.target.value }))}
-                      placeholder="Enter location name"
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="latitude">Latitude</Label>
-                    <Input
-                      id="latitude"
-                      value={currentPlace?.lat.toFixed(6) || ''}
-                      readOnly
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="longitude">Longitude</Label>
-                    <Input
-                      id="longitude"
-                      value={currentPlace?.lng.toFixed(6) || ''}
-                      readOnly
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="description">Description</Label>
-                    <Textarea
-                      id="description"
-                      value={saveFormData.description}
-                      onChange={(e) => setSaveFormData(prev => ({ ...prev, description: e.target.value }))}
-                      placeholder="Enter location description"
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="context">Context</Label>
-                    <Input
-                      id="context"
-                      value={saveFormData.context}
-                      onChange={(e) => setSaveFormData(prev => ({ ...prev, context: e.target.value }))}
-                      placeholder="Enter location context"
-                    />
-                  </div>
-                  <Button onClick={handleSaveMarker}>Save Marker</Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-80">
+              <div className="grid gap-4">
+                <div className="space-y-2">
+                  <h4 className="font-medium leading-none">Save Location</h4>
+                  <p className="text-sm text-muted-foreground">
+                    Fill in the details to save this location.
+                  </p>
                 </div>
-              </PopoverContent>
-            </Popover>
-          </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="name">Name</Label>
+                  <Input
+                    id="name"
+                    value={saveFormData.name}
+                    onChange={(e) => setSaveFormData(prev => ({ ...prev, name: e.target.value }))}
+                    placeholder="Enter location name"
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="latitude">Latitude</Label>
+                  <Input
+                    id="latitude"
+                    value={currentPlace?.lat.toFixed(6) || ''}
+                    readOnly
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="longitude">Longitude</Label>
+                  <Input
+                    id="longitude"
+                    value={currentPlace?.lng.toFixed(6) || ''}
+                    readOnly
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="description">Description</Label>
+                  <Textarea
+                    id="description"
+                    value={saveFormData.description}
+                    onChange={(e) => setSaveFormData(prev => ({ ...prev, description: e.target.value }))}
+                    placeholder="Enter location description"
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="context">Context</Label>
+                  <Input
+                    id="context"
+                    value={saveFormData.context}
+                    onChange={(e) => setSaveFormData(prev => ({ ...prev, context: e.target.value }))}
+                    placeholder="Enter location context"
+                  />
+                </div>
+                <Button onClick={handleSaveMarker}>Save Marker</Button>
+              </div>
+            </PopoverContent>
+          </Popover>
+        </div>
+        <div className="flex-1 relative">
           <div style={mapContainerStyle}>
             <GoogleMap
               mapContainerStyle={mapContainerStyle}
@@ -301,11 +296,13 @@ const MapsPage = () => {
           {errorMessage && <ErrorMessage error={new Error(errorMessage)} reset={() => setErrorMessage(null)} />}
         </div>
         {selectedLocation && (
-          <LocationDetails
-            name={selectedLocation.name}
-            description={selectedLocation.description}
-            comments={mockComments}
-          />
+          <div className="absolute bottom-4 left-4 right-4 z-20">
+            <LocationDetails
+              name={selectedLocation.name}
+              description={selectedLocation.description}
+              comments={mockComments}
+            />
+          </div>
         )}
       </main>
     </div>
