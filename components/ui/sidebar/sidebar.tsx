@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-import { Icons } from "./icons"
+import { Icons } from "@/components/ui/sidebar/icons"
 
 type NavItem = {
   title: string
@@ -74,18 +74,6 @@ const Sidebar: React.FC<SidebarProps> = ({ onCollapse }) => {
       <div className="flex items-center justify-between p-4">
         <Link href="/" className="flex items-center space-x-2">
           <Icons.logo className="h-6 w-6" />
-          <AnimatePresence>
-            {!collapsed && (
-              <motion.span
-                className="font-bold"
-                initial={{ opacity: 0, width: 0 }}
-                animate={{ opacity: 1, width: 'auto' }}
-                exit={{ opacity: 0, width: 0 }}
-              >
-                Astra
-              </motion.span>
-            )}
-          </AnimatePresence>
         </Link>
         <Button
           variant="ghost"
@@ -201,4 +189,3 @@ function NavItem({ item, collapsed }: { item: NavItem; collapsed: boolean }) {
 }
 
 export default Sidebar;
-
