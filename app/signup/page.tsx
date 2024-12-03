@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import Link from 'next/link'
-import { useToast } from "@/components/ui/useToast"
+import { useToast } from "@/hooks/use-toast"
 import { SocialLoginButtons } from '../login/social-login-buttons'
 
 export default function SignupPage() {
