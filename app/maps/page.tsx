@@ -90,41 +90,47 @@ const MapsPage = () => {
 
   useEffect(() => {
     if (isLoaded && map) {
-      const searchBox = new google.maps.places.SearchBox(
-        document.getElementById('search-input') as HTMLInputElement
-      );
-      searchBoxRef.current = searchBox;
-      map.controls[google.maps.ControlPosition.TOP_RIGHT].push(
-        document.getElementById('search-container') as HTMLElement
-      );
-      searchBox.addListener('places_changed', () => {
-        const places = searchBox.getPlaces();
-        if (places && places.length > 0) {
-          const bounds = new google.maps.LatLngBounds();
-          places.forEach((place) => {
-            if (place.geometry && place.geometry.location) {
-              bounds.extend(place.geometry.location);
+      const searchInput = document.getElementById('search-input') as HTMLInputElement;
+      const searchContainer = document.getElementById('search-container') as HTMLElement;
+      
+      if (searchInput && searchContainer) {
+        const searchBox = new google.maps.places.SearchBox(searchInput);
+        searchBoxRef.current = searchBox;
+        map.controls[google.maps.ControlPosition.TOP_RIGHT].push(searchContainer);
+
+        const placesChangedListener = searchBox.addListener('places_changed', () => {
+          const places = searchBox.getPlaces();
+          if (places && places.length > 0) {
+            const bounds = new google.maps.LatLngBounds();
+            places.forEach((place) => {
+              if (place.geometry && place.geometry.location) {
+                bounds.extend(place.geometry.location);
+              }
+            });
+            map.fitBounds(bounds);
+            if (places[0].geometry && places[0].geometry.location) {
+              const newMarker: SavedMarker = {
+                lat: places[0].geometry.location.lat(),
+                lng: places[0].geometry.location.lng(),
+                imageUrl: `https://picsum.photos/200?random=${Date.now()}`,
+                name: places[0].name || 'Unnamed Location',
+                description: places[0].formatted_address || 'No description available',
+                context: '',
+              };
+              setMarkers((prevMarkers) => [...prevMarkers, newMarker]);
+              setCurrentPlace(newMarker);
+              setSaveFormData(prev => ({ ...prev, name: places[0].name || '' }));
+              setSearchQuery(places[0].formatted_address || places[0].name || '');
             }
-          });
-          map.fitBounds(bounds);
-          if (places[0].geometry && places[0].geometry.location) {
-            const newMarker: SavedMarker = {
-              lat: places[0].geometry.location.lat(),
-              lng: places[0].geometry.location.lng(),
-              imageUrl: `https://picsum.photos/200?random=${Date.now()}`,
-              name: places[0].name || 'Unnamed Location',
-              description: places[0].formatted_address || 'No description available',
-              context: '',
-            };
-            setMarkers((prevMarkers) => [...prevMarkers, newMarker]);
-            setCurrentPlace(newMarker);
-            setSaveFormData(prev => ({ ...prev, name: places[0].name || '' }));
-            setSearchQuery(places[0].formatted_address || places[0].name || '');
+          } else {
+            setErrorMessage('No results found for your search.');
           }
-        } else {
-          setErrorMessage('No results found for your search.');
-        }
-      });
+        });
+
+        return () => {
+          google.maps.event.removeListener(placesChangedListener);
+        };
+      }
     }
   }, [isLoaded, map]);
 
@@ -213,7 +219,7 @@ const MapsPage = () => {
                   <Input
                     id="name"
                     value={saveFormData.name}
-                    onChange={(e) => setSaveFormData(prev => ({ ...prev, name: e.target.value }))}
+                    onChange={(e) => setSaveFormData(prev => ({ ...prev, name: e.target.value }))} 
                     placeholder="Enter location name"
                   />
                 </div>
@@ -238,7 +244,7 @@ const MapsPage = () => {
                   <Textarea
                     id="description"
                     value={saveFormData.description}
-                    onChange={(e) => setSaveFormData(prev => ({ ...prev, description: e.target.value }))}
+                    onChange={(e) => setSaveFormData(prev => ({ ...prev, description: e.target.value }))} 
                     placeholder="Enter location description"
                   />
                 </div>
@@ -247,7 +253,7 @@ const MapsPage = () => {
                   <Input
                     id="context"
                     value={saveFormData.context}
-                    onChange={(e) => setSaveFormData(prev => ({ ...prev, context: e.target.value }))}
+                    onChange={(e) => setSaveFormData(prev => ({ ...prev, context: e.target.value }))} 
                     placeholder="Enter location context"
                   />
                 </div>
@@ -263,7 +269,7 @@ const MapsPage = () => {
             mapContainerStyle={mapContainerStyle}
             center={center}
             zoom={2}
-            onLoad={(map) => setMap(map)}
+            onLoad={setMap}
           >
             {markers.map((marker, index) => (
               <CustomMarker 

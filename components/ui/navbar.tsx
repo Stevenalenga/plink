@@ -1,11 +1,13 @@
 'use client'
 
-import React, { useState } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import React, { useState, useEffect, useRef } from 'react'
 import { User, Info, Mail, Menu, X } from 'lucide-react'
 import Link from 'next/link'
-import Draggable from 'react-draggable'
+import dynamic from 'next/dynamic'
 
+const Draggable = dynamic(() => import('react-draggable'), { ssr: false })
+const AnimatePresence = dynamic(() => import('framer-motion').then((mod) => mod.AnimatePresence), { ssr: false })
+import { motion } from 'framer-motion'
 
 const navItems = [
   { icon: User, label: 'Profile', href: '/profile' },
@@ -16,10 +18,20 @@ const navItems = [
 export function Navbar() {
   const [isOpen, setIsOpen] = useState(false)
   const [activeItem, setActiveItem] = useState<number | null>(null)
+  const [isClient, setIsClient] = useState(false)
+  const nodeRef = useRef(null)
+
+  useEffect(() => {
+    setIsClient(true)
+  }, [])
+
+  if (!isClient) {
+    return null // or a loading placeholder
+  }
 
   return (
-    <Draggable bounds="parent">
-      <nav className="absolute z-50 cursor-move">
+    <Draggable bounds="parent" nodeRef={nodeRef}>
+      <nav ref={nodeRef} className="absolute z-50 cursor-move">
         <AnimatePresence>
           {isOpen && (
             <motion.div
@@ -75,3 +87,4 @@ export function Navbar() {
     </Draggable>
   )
 }
+
