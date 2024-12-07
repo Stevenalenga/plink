@@ -14,13 +14,13 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <head />
       <body className={inter.className}>
         <AuthProvider>
-          <main>{children}</main>
+          <main className="h-screen overflow-auto">{children}</main>
           <Toaster />
         </AuthProvider>
       </body>
     </html>
   )
 }
+

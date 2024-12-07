@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
-import Draggable from 'react-draggable'
+import dynamic from 'next/dynamic'
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -41,12 +41,8 @@ const Sidebar: React.FC<SidebarProps> = ({ onCollapse }) => {
   const [collapsed, setCollapsed] = useState(false)
   const [position, setPosition] = useState({ x: 0, y: 0 })
   const pathname = usePathname()
-  const [isClient, setIsClient] = useState(false);
-  const sidebarRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    setIsClient(true);
-  }, []);
+  const sidebarRef = useRef<HTMLDivElement>(null)
+  const DraggableComponent = dynamic(() => import('react-draggable'), { ssr: false })
 
   useEffect(() => {
     const handleResize = () => {
@@ -75,15 +71,13 @@ const Sidebar: React.FC<SidebarProps> = ({ onCollapse }) => {
     setPosition({ x: data.x, y: data.y })
   }
 
-  if (!isClient) {
-    return null;
-  }
-
   return (
-    <Draggable
+    <DraggableComponent
       position={position}
       onDrag={handleDrag}
       handle=".drag-handle"
+      nodeRef={sidebarRef}
+      bounds="parent"
     >
       <motion.nav
         ref={sidebarRef}
@@ -150,7 +144,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onCollapse }) => {
           </div>
         </div>
       </motion.nav>
-    </Draggable>
+    </DraggableComponent>
   )
 }
 
@@ -217,4 +211,5 @@ function NavItem({ item, collapsed }: { item: NavItem; collapsed: boolean }) {
   )
 }
 
-export default Sidebar;
+export default Sidebar
+

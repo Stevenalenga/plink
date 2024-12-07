@@ -8,21 +8,17 @@ import { Textarea } from "@/components/ui/textarea";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Label } from "@/components/ui/label";
 import { Search, Save } from 'lucide-react';
-import Link from 'next/link';
 import CustomMarker from '@/components/ui/custom-teardrop-marker';
 import ErrorMessage from '@/errors/errors';
 import { LocationDetails } from './location-details';
-import Sidebar from '@/components/ui/sidebar/sidebar';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '../contexts/AuthContext';
-import Draggable from 'react-draggable';
+import { useAuth } from "../contexts/AuthContext";
+import Sidebar from '@/components/ui/sidebar/sidebar';
 
 const mapContainerStyle = {
   width: '100%',
-  height: '100vh',
-  position: 'absolute' as const,
-  top: 0,
-  left: 0,
+  height: 'calc(100vh - 64px)',
+  position: 'relative' as const,
 };
 
 const center = {
@@ -30,20 +26,13 @@ const center = {
   lng: 0,
 };
 
-interface SavedMarker extends LocalCustomMarkerProps {
-  name: string;
-  description: string;
-  context: string;
-}
-
-interface LocalCustomMarkerProps {
+interface SavedMarker {
   lat: number;
   lng: number;
   imageUrl: string;
   name: string;
   description: string;
   context: string;
-  onClick?: () => void;
 }
 
 interface Comment {
@@ -55,17 +44,8 @@ interface Comment {
 }
 
 const MapsPage = () => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, authToken } = useAuth();
   const router = useRouter();
-
-  useEffect(() => {
-    if (!isAuthenticated) {
-      console.log('User not authenticated, redirecting to login');
-      router.push('/login');
-    } else {
-      console.log('User authenticated, staying on maps page');
-    }
-  }, [isAuthenticated, router]);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [map, setMap] = useState<google.maps.Map | null>(null);
@@ -87,7 +67,6 @@ const MapsPage = () => {
   });
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Mock comments (in a real application, these would come from a database)
   const mockComments: Comment[] = [
     { id: '1', user: 'Alice', avatar: 'https://picsum.photos/id/1/200', text: 'Great place!', date: '2023-06-01' },
     { id: '2', user: 'Bob', avatar: 'https://picsum.photos/id/2/200', text: 'I love visiting here.', date: '2023-06-02' },
@@ -95,44 +74,63 @@ const MapsPage = () => {
   ];
 
   useEffect(() => {
+    if (!isAuthenticated || !authToken) {
+      console.log('User not authenticated or no token, redirecting to login');
+      router.push('/login');
+    } else {
+      console.log('User authenticated with token, staying on maps page');
+      // Fetch markers from API here based on authToken
+      const mockMarkers = [
+        { lat: 37.7749, lng: -122.4194, name: 'Marker 1', description: 'Description 1', imageUrl: '/marker1.png', context: '' },
+        { lat: 34.0522, lng: -118.2437, name: 'Marker 2', description: 'Description 2', imageUrl: '/marker2.png', context: '' },
+      ];
+      setMarkers(mockMarkers);
+    }
+  }, [isAuthenticated, authToken, router]);
+
+  useEffect(() => {
     if (isLoaded && map) {
-      const searchBox = new google.maps.places.SearchBox(
-        document.getElementById('search-input') as HTMLInputElement
-      );
-      searchBoxRef.current = searchBox;
-      map.controls[google.maps.ControlPosition.TOP_RIGHT].push(
-        document.getElementById('search-container') as HTMLElement
-      );
-      searchBox.addListener('places_changed', () => {
-        const places = searchBox.getPlaces();
-        if (places && places.length > 0) {
-          const bounds = new google.maps.LatLngBounds();
-          places.forEach((place) => {
-            if (place.geometry && place.geometry.location) {
-              bounds.extend(place.geometry.location);
+      const searchInput = document.getElementById('search-input') as HTMLInputElement;
+      const searchContainer = document.getElementById('search-container') as HTMLElement;
+      
+      if (searchInput && searchContainer) {
+        const searchBox = new google.maps.places.SearchBox(searchInput);
+        searchBoxRef.current = searchBox;
+        map.controls[google.maps.ControlPosition.TOP_RIGHT].push(searchContainer);
+
+        const placesChangedListener = searchBox.addListener('places_changed', () => {
+          const places = searchBox.getPlaces();
+          if (places && places.length > 0) {
+            const bounds = new google.maps.LatLngBounds();
+            places.forEach((place) => {
+              if (place.geometry && place.geometry.location) {
+                bounds.extend(place.geometry.location);
+              }
+            });
+            map.fitBounds(bounds);
+            if (places[0].geometry && places[0].geometry.location) {
+              const newMarker: SavedMarker = {
+                lat: places[0].geometry.location.lat(),
+                lng: places[0].geometry.location.lng(),
+                imageUrl: `https://picsum.photos/200?random=${Date.now()}`,
+                name: places[0].name || 'Unnamed Location',
+                description: places[0].formatted_address || 'No description available',
+                context: '',
+              };
+              setMarkers((prevMarkers) => [...prevMarkers, newMarker]);
+              setCurrentPlace(newMarker);
+              setSaveFormData(prev => ({ ...prev, name: places[0].name || '' }));
+              setSearchQuery(places[0].formatted_address || places[0].name || '');
             }
-          });
-          map.fitBounds(bounds);
-          // Add a new marker for the searched location
-          if (places[0].geometry && places[0].geometry.location) {
-            const newMarker: SavedMarker = {
-              lat: places[0].geometry.location.lat(),
-              lng: places[0].geometry.location.lng(),
-              imageUrl: `https://picsum.photos/200?random=${Date.now()}`,
-              name: places[0].name || 'Unnamed Location',
-              description: places[0].formatted_address || 'No description available',
-              context: '',
-            };
-            setMarkers((prevMarkers) => [...prevMarkers, newMarker]);
-            setCurrentPlace(newMarker);
-            setSaveFormData(prev => ({ ...prev, name: places[0].name || '' }));
-            // Update searchQuery with the full place name or formatted address
-            setSearchQuery(places[0].formatted_address || places[0].name || '');
+          } else {
+            setErrorMessage('No results found for your search.');
           }
-        } else {
-          setErrorMessage('No results found for your search.');
-        }
-      });
+        });
+
+        return () => {
+          google.maps.event.removeListener(placesChangedListener);
+        };
+      }
     }
   }, [isLoaded, map]);
 
@@ -150,7 +148,6 @@ const MapsPage = () => {
         if (map) {
           map.fitBounds(bounds);
         }
-        // Update searchQuery with the full place name or formatted address
         setSearchQuery(places[0].formatted_address || places[0].name || '');
       } else {
         setErrorMessage('No results found for your search.');
@@ -179,38 +176,29 @@ const MapsPage = () => {
   if (!isLoaded) return <div className="flex items-center justify-center h-screen">Loading maps...</div>;
 
   return (
-    <div className="relative h-screen">
-      <Draggable>
-        <div>
-          <Sidebar />
-        </div>
-      </Draggable>
-      <main className="flex-1 flex flex-col">
-        <header className="p-4 bg-primary text-primary-foreground absolute top-0 left-0 right-0 z-10">
-          <div className="flex justify-between items-center">
-            <h1 className="text-2xl">Maps</h1>
-            <Link href="/settings">
-              <Button>
-                <span className="sr-only">Settings</span>
+    <div className="flex flex-col h-screen relative">
+      <header className="flex justify-between items-center p-4 bg-primary text-primary-foreground">
+        <h1 className="text-2xl font-bold">Maps</h1>
+        <div className="flex items-center space-x-4">
+          <div id="search-container" className="relative">
+            <form onSubmit={handleSearch} className="flex items-center space-x-2">
+              <Input
+                id="search-input"
+                type="text"
+                placeholder="Search for places..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-64 pr-10"
+              />
+              <Button 
+                type="submit"
+                className="absolute right-0 top-0 bottom-0"
+                variant="ghost"
+              >
+                <Search className="h-4 w-4" />
               </Button>
-            </Link>
+            </form>
           </div>
-        </header>
-        <div id="search-container" className="p-4 flex items-center space-x-2 absolute top-4 right-4 z-20">
-          <form onSubmit={handleSearch} className="flex items-center space-x-2 flex-grow">
-            <Input
-              id="search-input"
-              type="text"
-              placeholder="Search for places..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="flex-grow"
-            />
-            <Button type="submit" variant="default">
-              <Search className="h-5 w-5" />
-              <span className="sr-only">Search</span>
-            </Button>
-          </form>
           <Popover>
             <PopoverTrigger asChild>
               <Button variant="outline" size="icon">
@@ -231,7 +219,7 @@ const MapsPage = () => {
                   <Input
                     id="name"
                     value={saveFormData.name}
-                    onChange={(e) => setSaveFormData(prev => ({ ...prev, name: e.target.value }))}
+                    onChange={(e) => setSaveFormData(prev => ({ ...prev, name: e.target.value }))} 
                     placeholder="Enter location name"
                   />
                 </div>
@@ -256,7 +244,7 @@ const MapsPage = () => {
                   <Textarea
                     id="description"
                     value={saveFormData.description}
-                    onChange={(e) => setSaveFormData(prev => ({ ...prev, description: e.target.value }))}
+                    onChange={(e) => setSaveFormData(prev => ({ ...prev, description: e.target.value }))} 
                     placeholder="Enter location description"
                   />
                 </div>
@@ -265,7 +253,7 @@ const MapsPage = () => {
                   <Input
                     id="context"
                     value={saveFormData.context}
-                    onChange={(e) => setSaveFormData(prev => ({ ...prev, context: e.target.value }))}
+                    onChange={(e) => setSaveFormData(prev => ({ ...prev, context: e.target.value }))} 
                     placeholder="Enter location context"
                   />
                 </div>
@@ -274,37 +262,36 @@ const MapsPage = () => {
             </PopoverContent>
           </Popover>
         </div>
-        <div className="flex-1 relative">
-          <div style={mapContainerStyle}>
-            <GoogleMap
-              mapContainerStyle={mapContainerStyle}
-              center={center}
-              zoom={2}
-              onLoad={(map) => setMap(map)}
-            >
-              {markers.map((marker, index) => (
-                <CustomMarker 
-                  key={index} 
-                  lat={marker.lat}
-                  lng={marker.lng}
-                  imageUrl={marker.imageUrl}
-                  onClick={() => setSelectedLocation(marker)}
-                />
-              ))}
-            </GoogleMap>
-          </div>
-          {errorMessage && <ErrorMessage error={new Error(errorMessage)} reset={() => setErrorMessage(null)} />}
+      </header>
+      <main className="flex-1 relative">
+        <div style={mapContainerStyle}>
+          <GoogleMap
+            mapContainerStyle={mapContainerStyle}
+            center={center}
+            zoom={2}
+            onLoad={setMap}
+          >
+            {markers.map((marker, index) => (
+              <CustomMarker 
+                key={index} 
+                lat={marker.lat}
+                lng={marker.lng}
+                imageUrl={marker.imageUrl}
+                onClick={() => handleMarkerClick(marker)}
+              />
+            ))}
+          </GoogleMap>
         </div>
+        {errorMessage && <ErrorMessage error={new Error(errorMessage)} reset={() => setErrorMessage(null)} />}
         {selectedLocation && (
-          <div className="absolute bottom-4 left-4 right-4 z-20">
-            <LocationDetails
-              name={selectedLocation.name}
-              description={selectedLocation.description}
-              comments={mockComments}
-            />
-          </div>
+          <LocationDetails
+            name={selectedLocation.name}
+            description={selectedLocation.description}
+            comments={mockComments}
+          />
         )}
       </main>
+      <Sidebar/>
     </div>
   );
 }
