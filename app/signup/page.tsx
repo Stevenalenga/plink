@@ -36,23 +36,35 @@ export default function SignupPage() {
     }
 
     try {
-      // Replace this with your sign-up logic
-      // const result = await signUp({ email, password });
+      const formData = new FormData();
+      formData.append('username', email);
+      formData.append('email', email);
+      formData.append('password', password);
 
-      // if (result?.error) {
-      //   toast({
-      //     title: "Error",
-      //     description: result.error,
-      //     variant: "destructive",
-      //   });
-      // } else {
-      //   router.push('/maps');
-      // }
+      const response = await fetch('http://localhost:8000/api/v3/signup', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const data = await response.json();
+      console.log('Full signup response:', data);
+      if (!response.ok) {
+        console.error('Signup failed with status:', response.status);
+        console.error('Error details:', data);
+        throw new Error(data.detail || 'Signup failed');
+      }
+
+      toast({
+        title: "Success",
+        description: "You have successfully signed up.",
+      });
+
+      router.push('/maps');
     } catch (error) {
       console.error('Signup error:', error);
       toast({
         title: "Error",
-        description: "An unexpected error occurred",
+        description: error instanceof Error ? error.message : "An unexpected error occurred",
         variant: "destructive",
       });
     } finally {
