@@ -34,13 +34,15 @@ export default function LoginPage() {
     console.log('Login attempt started');
 
     try {
-      const formData = new FormData();
-      formData.append('username', email);
-      formData.append('password', password);
-
-      const response = await fetch('http://localhost:8000/api/v3/login', {
+      const response = await fetch('http://localhost:3001/auth/login', {
         method: 'POST',
-        body: formData,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          username: email,
+          password: password
+        }),
       });
 
       const data = await response.json();
