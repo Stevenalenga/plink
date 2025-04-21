@@ -11,6 +11,9 @@ import { supabase } from "@/lib/supabase"
 import { useToast } from "@/hooks/use-toast"
 import type { Tables } from "@/lib/supabase"
 
+// Import the format utility at the top of the file
+import { formatLocation } from "@/lib/format-coordinates"
+
 type Location = Tables["locations"]
 type Route = Tables["routes"]
 
@@ -184,7 +187,10 @@ export default function ProfilePage() {
                         <div key={location.id} className="flex items-center justify-between p-3 border rounded-lg">
                           <div>
                             <h4 className="font-medium">{location.name}</h4>
-                            <p className="text-sm text-muted-foreground">{location.is_public ? "Public" : "Private"}</p>
+                            <p className="text-sm text-muted-foreground">
+                              {formatLocation(location.lat, location.lng)}
+                            </p>
+                            <p className="text-xs text-muted-foreground">{location.is_public ? "Public" : "Private"}</p>
                           </div>
                           <div className="flex items-center gap-2">
                             <Button

@@ -14,6 +14,10 @@ import { supabase } from "@/lib/supabase"
 import { NEXT_PUBLIC_GOOGLE_MAPS_API_KEY } from "@/app/env"
 import { useRouter } from "next/navigation"
 import { Loader } from "@googlemaps/js-api-loader"
+// Import the CoordinateInput component at the top of the file
+import { CoordinateInput } from "@/components/coordinate-input"
+// Import the format utility at the top of the file
+import { formatLocation } from "@/lib/format-coordinates"
 
 type Location = {
   id: string
@@ -37,6 +41,60 @@ export function MapContainer() {
   const router = useRouter()
   const googleMarkers = useRef<Map<string, google.maps.Marker>>(new Map())
   const infoWindows = useRef<Map<string, google.maps.InfoWindow>>(new Map())
+
+  // Add a new function to handle saving locations from coordinates
+  // Add this function inside the MapContainer component, near the saveLocation function
+  const saveLocationFromCoordinates = async (locationData: {
+    lat: number
+    lng: number
+    name: string
+    isPublic: boolean
+  }) => {
+    if (!user) return
+
+    try {
+      // Save to Supabase
+      const { data, error } = await supabase
+        .from("locations")
+        .insert([
+          {
+            user_id: user.id,
+            name: locationData.name,
+            lat: locationData.lat,
+            lng: locationData.lng,
+            is_public: locationData.isPublic,
+          },
+        ])
+        .select()
+
+      if (error) throw error
+
+      const newLocation = data[0]
+
+      // Add marker to map
+      addMarkerToMap(newLocation)
+
+      // Update local state
+      setMarkers((prev) => [...prev, newLocation])
+
+      // Center map on the new location
+      if (map) {
+        map.panTo({ lat: locationData.lat, lng: locationData.lng })
+        map.setZoom(15)
+      }
+
+      toast({
+        title: "Location saved",
+        description: `${newLocation.name} has been saved ${locationData.isPublic ? "publicly" : "privately"}`,
+      })
+    } catch (error: any) {
+      toast({
+        title: "Error saving location",
+        description: error.message,
+        variant: "destructive",
+      })
+    }
+  }
 
   const loadLocations = useCallback(async () => {
     if (!user) return
@@ -100,7 +158,15 @@ export function MapContainer() {
 
       // Add info window
       const infoWindow = new google.maps.InfoWindow({
-        content: `<div><strong>${location.name}</strong><br/>${location.is_public ? "Public" : "Private"}</div>`,
+        content: `
+    <div>
+      <strong>${location.name}</strong><br/>
+      ${formatLocation(location.lat, location.lng)}<br/>
+      <span style="color: ${location.is_public ? "#22c55e" : "#64748b"}">
+        ${location.is_public ? "Public" : "Private"}
+      </span>
+    </div>
+  `,
       })
 
       marker.addListener("click", () => {
@@ -235,6 +301,11 @@ export function MapContainer() {
   return (
     <div className="h-full relative">
       <div ref={mapRef} className="map-container" />
+
+      {/* Add the coordinate input button in the top right corner */}
+      <div className="absolute top-4 right-4 z-10">
+        <CoordinateInput onSaveLocation={saveLocationFromCoordinates} />
+      </div>
 
       {/* Floating action buttons */}
       <div className="absolute bottom-4 right-4 flex flex-col gap-2">

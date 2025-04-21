@@ -7,7 +7,7 @@ export default function HomePage() {
   return (
     <main className="flex flex-col h-screen">
       <div className="flex-1 relative">
-        <div className="absolute top-4 left-4 right-4 z-10">
+        <div className="absolute top-4 left-4 right-20 z-10">
           <SearchBar />
         </div>
         <Suspense fallback={<MapSkeleton />}>

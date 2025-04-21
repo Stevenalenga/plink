@@ -15,6 +15,8 @@ type UserContextType = {
   signIn: (email: string, password: string) => Promise<void>
   signUp: (email: string, password: string, name: string) => Promise<void>
   signOut: () => Promise<void>
+  resetPassword: (email: string) => Promise<void>
+  updatePassword: (password: string) => Promise<void>
 }
 
 const UserContext = createContext<UserContextType | null>(null)
@@ -136,6 +138,56 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
+  // Add password reset function
+  const resetPassword = async (email: string) => {
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      })
+
+      if (error) {
+        throw error
+      }
+
+      toast({
+        title: "Password reset email sent",
+        description: "Check your email for a link to reset your password",
+      })
+    } catch (error: any) {
+      toast({
+        title: "Password reset failed",
+        description: error.message,
+        variant: "destructive",
+      })
+      throw error
+    }
+  }
+
+  // Add update password function
+  const updatePassword = async (password: string) => {
+    try {
+      const { error } = await supabase.auth.updateUser({
+        password,
+      })
+
+      if (error) {
+        throw error
+      }
+
+      toast({
+        title: "Password updated",
+        description: "Your password has been updated successfully",
+      })
+    } catch (error: any) {
+      toast({
+        title: "Password update failed",
+        description: error.message,
+        variant: "destructive",
+      })
+      throw error
+    }
+  }
+
   return (
     <UserContext.Provider
       value={{
@@ -146,6 +198,8 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
         signIn,
         signUp,
         signOut,
+        resetPassword,
+        updatePassword,
       }}
     >
       {children}
