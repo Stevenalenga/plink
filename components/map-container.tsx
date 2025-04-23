@@ -410,20 +410,13 @@ export function MapContainer() {
     let googleMap: google.maps.Map | null = null
 
     const initializeMap = async () => {
-      const loader = new Loader({
-        apiKey: NEXT_PUBLIC_GOOGLE_MAPS_API_KEY,
-        version: "weekly",
-        libraries: ["places"],
-      })
+      if (!mapRef.current) return
 
       try {
-        const google = await loader.load()
-        googleRef.current = google
+        const { Map } = await google.maps.importLibrary("maps") as google.maps.MapsLibrary
+        const { PlacesService, AutocompleteService } = await google.maps.importLibrary("places") as google.maps.PlacesLibrary
 
-        if (!mapRef.current) return
-
-        googleMap = new google.maps.Map(mapRef.current, {
-          
+        googleMap = new Map(mapRef.current, {
           center: { lat: 0, lng: 0 }, // Default to center of the world
           zoom: 3, // Zoom out to show more of the world
           mapTypeControl: false,
@@ -441,8 +434,8 @@ export function MapContainer() {
         setMap(googleMap)
         setIsLoading(false)
 
-        placesService.current = new google.maps.places.PlacesService(googleMap)
-        autocompleteService.current = new google.maps.places.AutocompleteService()
+        placesService.current = new PlacesService(googleMap)
+        autocompleteService.current = new AutocompleteService()
 
         // Add click listener to map
         googleMap.addListener("click", (event: google.maps.MapMouseEvent) => {
