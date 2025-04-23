@@ -221,37 +221,28 @@ export function MapContainer() {
   const addMarkerToMap = useCallback(
     (location: Location) => {
       if (!map || !googleRef.current) return
-
+  
       // Skip if marker already exists
       if (googleMarkers.current.has(location.id)) return
-
+  
       const marker = new googleRef.current.maps.Marker({
         position: { lat: location.lat, lng: location.lng },
         map,
         title: location.name,
-        // Updated marker configuration
-        icon: {
-          url: `data:image/svg+xml,${encodeURIComponent(`
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <circle cx="12" cy="12" r="8" fill="${location.is_public ? "#22c55e" : "#64748b"}"/>
-            </svg>
-          `)}`,
-          scaledSize: new googleRef.current.maps.Size(24, 24),
-          anchor: new googleRef.current.maps.Point(12, 12),
-        },
+        // Remove custom icon configuration to use default marker
       })
 
       // Add info window
       const infoWindow = new googleRef.current.maps.InfoWindow({
         content: `
-    <div>
-      <strong>${location.name}</strong><br/>
-      ${formatLocation(location.lat, location.lng)}<br/>
-      <span style="color: ${location.is_public ? "#22c55e" : "#64748b"}">
-        ${location.is_public ? "Public" : "Private"}
-      </span>
-    </div>
-  `,
+          <div>
+            <strong>${location.name}</strong><br/>
+            ${formatLocation(location.lat, location.lng)}<br/>
+            <span style="color: ${location.is_public ? "#22c55e" : "#64748b"}">
+              ${location.is_public ? "Public" : "Private"}
+            </span>
+          </div>
+        `,
       })
 
       marker.addListener("click", () => {
@@ -259,12 +250,12 @@ export function MapContainer() {
         infoWindows.current.forEach((window) => window.close())
         infoWindow.open(map, marker)
       })
-
+  
       // Store references
       googleMarkers.current.set(location.id, marker)
       infoWindows.current.set(location.id, infoWindow)
     },
-    [map],
+    [map]
   )
 
   const handlePlaceSelect = async (prediction: google.maps.places.AutocompletePrediction) => {
@@ -301,7 +292,7 @@ export function MapContainer() {
     const request = {
       input: value,
       types: ["geocode", "establishment"],
-      componentRestrictions: { country: "za" }, // Change this to your desired country code
+      //componentRestrictions: { country: "za" }, // Change this to your desired country code
     }
 
     autocompleteService.current.getPlacePredictions(request, (predictions, status) => {
@@ -432,8 +423,9 @@ export function MapContainer() {
         if (!mapRef.current) return
 
         googleMap = new google.maps.Map(mapRef.current, {
-          center: { lat: -28.4793, lng: 24.6727 }, // Center of South Africa
-          zoom: 6,
+          
+          center: { lat: 0, lng: 0 }, // Default to center of the world
+          zoom: 3, // Zoom out to show more of the world
           mapTypeControl: false,
           streetViewControl: false,
           fullscreenControl: false,
