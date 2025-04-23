@@ -69,7 +69,6 @@ export function MapContainer() {
   const [isPublic, setIsPublic] = useState(true)
   const [locationName, setLocationName] = useState("")
   const [isLoading, setIsLoading] = useState(true)
-  const [isMapInitialized, setIsMapInitialized] = useState(false)
   const { user, isAuthenticated } = useUser()
   const { toast } = useToast()
   const router = useRouter()
@@ -635,7 +634,11 @@ export function MapContainer() {
   const dialogMemo = useMemo(() => locationDialog, [locationDialog])
 
   return (
-    <div className="h-full relative">
+    <div className="h-full relative"
+    role="region"
+    aria-label="Map container"
+    aria-busy={isLoading}>
+      
       <div ref={mapRef} className="map-container" />
 
       {/* Search input */}
