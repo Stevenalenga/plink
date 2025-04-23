@@ -623,7 +623,6 @@ export function MapContainer() {
     [selectedLocation, locationName, isPublic, saveLocation],
   )
 
-  const dialogMemo = useMemo(() => locationDialog, [locationDialog])
 
   return (
     <div className="h-full relative"
