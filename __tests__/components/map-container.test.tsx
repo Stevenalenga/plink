@@ -1,5 +1,5 @@
 import { render, screen } from '@testing-library/react'
-import { MapContainer } from '@/components/map-container'
+import { MapContainer } from '@/components/mapscomponents/map-container'
 import '@testing-library/jest-dom'
 
 import { useUser } from '@/hooks/use-user'

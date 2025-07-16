@@ -1,7 +1,9 @@
 import { Suspense } from "react"
-import { MapContainer } from "@/components/map-container"
-import { SearchBar } from "@/components/search-bar"
-import { MapSkeleton } from "@/components/map-skeleton"
+import { MapContainer } from "@/components/mapscomponents/map-container"
+
+import { SearchBar } from "@/components/mapscomponents/search-bar"
+
+import { MapSkeleton } from "@/components/mapscomponents/map-skeleton"
 
 export default function HomePage() {
   return (

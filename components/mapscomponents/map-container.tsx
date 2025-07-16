@@ -88,6 +88,90 @@ export function MapContainer() {
   const [suggestions, setSuggestions] = useState<google.maps.places.AutocompletePrediction[]>([])
   const placesService = useRef<google.maps.places.PlacesService | null>(null)
 
+  // Initialize map only once
+  useEffect(() => {
+    if (!NEXT_PUBLIC_GOOGLE_MAPS_API_KEY) {
+      toast({
+        title: "API Key Missing",
+        description: "Google Maps API key is not configured",
+        variant: "destructive",
+      })
+      return
+    }
+
+    let googleMap: google.maps.Map | null = null
+
+    const initializeMap = async () => {
+      if (!mapRef.current) {
+        console.error("mapRef is not attached to a DOM element.")
+        return
+      }
+
+      try {
+        const { Map } = await google.maps.importLibrary("maps") as google.maps.MapsLibrary
+        const { PlacesService, AutocompleteService } = await google.maps.importLibrary("places") as google.maps.PlacesLibrary
+
+        googleMap = new Map(mapRef.current, {
+          center: { lat: 0, lng: 0 }, // Default to center of the world
+          zoom: 3, // Zoom out to show more of the world
+          mapTypeControl: false,
+          streetViewControl: false,
+          fullscreenControl: false,
+          styles: [
+            {
+              featureType: "poi",
+              elementType: "labels",
+              stylers: [{ visibility: "off" }],
+            },
+          ],
+        })
+
+        setMap(googleMap)
+        setIsLoading(false)
+
+        placesService.current = new PlacesService(googleMap)
+        autocompleteService.current = new AutocompleteService()
+
+        // Add click listener to map
+        googleMap.addListener("click", (event: google.maps.MapMouseEvent) => {
+          if (!event.latLng) return
+
+          if (isAuthenticated) {
+            setSelectedLocation({
+              lat: event.latLng.lat(),
+              lng: event.latLng.lng(),
+            })
+          } else {
+            toast({
+              title: "Login required",
+              description: "Please login to save locations",
+              variant: "destructive",
+            })
+          }
+        })
+      } catch (error) {
+        console.error("Error loading Google Maps:", error)
+        toast({
+          title: "Error",
+          description: "Failed to load Google Maps",
+          variant: "destructive",
+        })
+        setIsLoading(false)
+      }
+    }
+
+    initializeMap()
+
+    // Cleanup function
+    return () => {
+      // Clear all markers and info windows
+      googleMarkers.current.forEach((marker) => marker.setMap(null))
+      infoWindows.current.forEach((window) => window.close())
+      googleMarkers.current.clear()
+      infoWindows.current.clear()
+    }
+  }, [isAuthenticated, toast])
+
   // Function to create a temporary marker when clicking on the map
   const createTempMarker = useCallback(
     (position: google.maps.LatLngLiteral) => {
@@ -395,87 +479,6 @@ export function MapContainer() {
       })
     }
   }, [map, toast, user, addMarkerToMap])
-
-  // Initialize map only once
-  useEffect(() => {
-    if (!NEXT_PUBLIC_GOOGLE_MAPS_API_KEY) {
-      toast({
-        title: "API Key Missing",
-        description: "Google Maps API key is not configured",
-        variant: "destructive",
-      })
-      return
-    }
-
-    let googleMap: google.maps.Map | null = null
-
-    const initializeMap = async () => {
-      if (!mapRef.current) return
-
-      try {
-        const { Map } = await google.maps.importLibrary("maps") as google.maps.MapsLibrary
-        const { PlacesService, AutocompleteService } = await google.maps.importLibrary("places") as google.maps.PlacesLibrary
-
-        googleMap = new Map(mapRef.current, {
-          center: { lat: 0, lng: 0 }, // Default to center of the world
-          zoom: 3, // Zoom out to show more of the world
-          mapTypeControl: false,
-          streetViewControl: false,
-          fullscreenControl: false,
-          styles: [
-            {
-              featureType: "poi",
-              elementType: "labels",
-              stylers: [{ visibility: "off" }],
-            },
-          ],
-        })
-
-        setMap(googleMap)
-        setIsLoading(false)
-
-        placesService.current = new PlacesService(googleMap)
-        autocompleteService.current = new AutocompleteService()
-
-        // Add click listener to map
-        googleMap.addListener("click", (event: google.maps.MapMouseEvent) => {
-          if (!event.latLng) return
-
-          if (isAuthenticated) {
-            setSelectedLocation({
-              lat: event.latLng.lat(),
-              lng: event.latLng.lng(),
-            })
-          } else {
-            toast({
-              title: "Login required",
-              description: "Please login to save locations",
-              variant: "destructive",
-            })
-          }
-        })
-      } catch (error) {
-        console.error("Error loading Google Maps:", error)
-        toast({
-          title: "Error",
-          description: "Failed to load Google Maps",
-          variant: "destructive",
-        })
-        setIsLoading(false)
-      }
-    }
-
-    initializeMap()
-
-    // Cleanup function
-    return () => {
-      // Clear all markers and info windows
-      googleMarkers.current.forEach((marker) => marker.setMap(null))
-      infoWindows.current.forEach((window) => window.close())
-      googleMarkers.current.clear()
-      infoWindows.current.clear()
-    }
-  }, [isAuthenticated, toast])
 
   // Check for URL parameters to center the map or display a route
   useEffect(() => {
