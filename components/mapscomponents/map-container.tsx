@@ -1,23 +1,16 @@
 "use client"
 
-import { useEffect, useRef, useState, useCallback, useMemo } from "react"
-import { Button } from "@/components/ui/button"
-import { Card } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Switch } from "@/components/ui/switch"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog"
-import { Plus, MapPin, RouteIcon, Share2, Search } from "lucide-react"
+import { useEffect, useRef, useState, useCallback } from "react"
 import { useUser } from "@/hooks/use-user"
 import { useToast } from "@/hooks/use-toast"
 import { supabase } from "@/lib/supabase"
 import { NEXT_PUBLIC_GOOGLE_MAPS_API_KEY } from "@/app/env"
 import { useRouter, useSearchParams } from "next/navigation"
-import { Loader } from "@googlemaps/js-api-loader"
-// Import the CoordinateInput component at the top of the file
-import { CoordinateInput } from "@/components/coordinate-input"
-// Import the format utility at the top of the file
 import { formatLocation } from "@/lib/format-coordinates"
+
+import { CustomMarker } from "./custom-marker"
+import { LiveLocation } from "./live-location"
+import { LocationControl } from "./location-control.tsx"
 
 type Location = {
   id: string
@@ -61,6 +54,36 @@ const mockRoutes = {
   },
 }
 
+// Function to load Google Maps script
+const loadGoogleMapsScript = (apiKey: string): Promise<void> => {
+  return new Promise((resolve, reject) => {
+    // Check if Google Maps is already loaded
+    if (typeof window !== "undefined" && window.google && window.google.maps) {
+      resolve()
+      return
+    }
+
+    // Check if script is already being loaded
+    const existingScript = document.querySelector('script[src*="maps.googleapis.com"]')
+    if (existingScript) {
+      existingScript.addEventListener("load", () => resolve())
+      existingScript.addEventListener("error", reject)
+      return
+    }
+
+    // Create and load the script
+    const script = document.createElement("script")
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places`
+    script.async = true
+    script.defer = true
+
+    script.onload = () => resolve()
+    script.onerror = () => reject(new Error("Failed to load Google Maps script"))
+
+    document.head.appendChild(script)
+  })
+}
+
 export function MapContainer() {
   const mapRef = useRef<HTMLDivElement>(null)
   const [map, setMap] = useState<google.maps.Map | null>(null)
@@ -69,20 +92,17 @@ export function MapContainer() {
   const [isPublic, setIsPublic] = useState(true)
   const [locationName, setLocationName] = useState("")
   const [isLoading, setIsLoading] = useState(true)
+  const [isLocationEnabled, setIsLocationEnabled] = useState(false)
   const { user, isAuthenticated } = useUser()
   const { toast } = useToast()
   const router = useRouter()
   const searchParams = useSearchParams()
 
   // Use refs for objects that need to persist between renders but don't affect rendering
-  const googleMarkers = useRef<Map<string, google.maps.Marker>>(new Map())
   const infoWindows = useRef<Map<string, google.maps.InfoWindow>>(new Map())
   const tempMarkerRef = useRef<google.maps.Marker | null>(null)
   const routePolylineRef = useRef<google.maps.Polyline | null>(null)
   const routeMarkersRef = useRef<google.maps.Marker[]>([])
-  const mapClickListenerRef = useRef<google.maps.MapsEventListener | null>(null)
-  const googleRef = useRef<typeof google | null>(null)
-
   const [searchInput, setSearchInput] = useState("")
   const autocompleteService = useRef<google.maps.places.AutocompleteService | null>(null)
   const [suggestions, setSuggestions] = useState<google.maps.places.AutocompletePrediction[]>([])
@@ -96,6 +116,7 @@ export function MapContainer() {
         description: "Google Maps API key is not configured",
         variant: "destructive",
       })
+      setIsLoading(false)
       return
     }
 
@@ -108,10 +129,11 @@ export function MapContainer() {
       }
 
       try {
-        const { Map } = await google.maps.importLibrary("maps") as google.maps.MapsLibrary
-        const { PlacesService, AutocompleteService } = await google.maps.importLibrary("places") as google.maps.PlacesLibrary
+        // Load Google Maps script first
+        await loadGoogleMapsScript(NEXT_PUBLIC_GOOGLE_MAPS_API_KEY)
 
-        googleMap = new Map(mapRef.current, {
+        // Now we can safely use google.maps
+        googleMap = new google.maps.Map(mapRef.current, {
           center: { lat: 0, lng: 0 }, // Default to center of the world
           zoom: 3, // Zoom out to show more of the world
           mapTypeControl: false,
@@ -129,13 +151,12 @@ export function MapContainer() {
         setMap(googleMap)
         setIsLoading(false)
 
-        placesService.current = new PlacesService(googleMap)
-        autocompleteService.current = new AutocompleteService()
+        placesService.current = new google.maps.places.PlacesService(googleMap)
+        autocompleteService.current = new google.maps.places.AutocompleteService()
 
         // Add click listener to map
         googleMap.addListener("click", (event: google.maps.MapMouseEvent) => {
           if (!event.latLng) return
-
           if (isAuthenticated) {
             setSelectedLocation({
               lat: event.latLng.lat(),
@@ -164,10 +185,8 @@ export function MapContainer() {
 
     // Cleanup function
     return () => {
-      // Clear all markers and info windows
-      googleMarkers.current.forEach((marker) => marker.setMap(null))
+      // Clear all info windows
       infoWindows.current.forEach((window) => window.close())
-      googleMarkers.current.clear()
       infoWindows.current.clear()
     }
   }, [isAuthenticated, toast])
@@ -175,7 +194,7 @@ export function MapContainer() {
   // Function to create a temporary marker when clicking on the map
   const createTempMarker = useCallback(
     (position: google.maps.LatLngLiteral) => {
-      if (!map || !googleRef.current) return
+      if (!map) return
 
       // Remove previous temp marker if it exists
       if (tempMarkerRef.current) {
@@ -183,12 +202,12 @@ export function MapContainer() {
       }
 
       // Create new temp marker
-      tempMarkerRef.current = new googleRef.current.maps.Marker({
+      tempMarkerRef.current = new google.maps.Marker({
         position,
         map,
-        animation: googleRef.current.maps.Animation.DROP,
+        animation: google.maps.Animation.DROP,
         icon: {
-          path: googleRef.current.maps.SymbolPath.CIRCLE,
+          path: google.maps.SymbolPath.CIRCLE,
           fillColor: "#3b82f6", // Blue color for temp marker
           fillOpacity: 1,
           strokeWeight: 2,
@@ -203,7 +222,7 @@ export function MapContainer() {
   // Function to display a route on the map
   const displayRoute = useCallback(
     (routeId: string) => {
-      if (!map || !googleRef.current) return
+      if (!map) return
 
       // Clear previous route if any
       if (routePolylineRef.current) {
@@ -229,7 +248,7 @@ export function MapContainer() {
       const path = route.points.map((point) => ({ lat: point.lat, lng: point.lng }))
 
       // Create polyline
-      routePolylineRef.current = new googleRef.current.maps.Polyline({
+      routePolylineRef.current = new google.maps.Polyline({
         path,
         geodesic: true,
         strokeColor: "#3b82f6",
@@ -239,12 +258,12 @@ export function MapContainer() {
       })
 
       // Add markers for start and end points
-      const startMarker = new googleRef.current.maps.Marker({
+      const startMarker = new google.maps.Marker({
         position: path[0],
         map,
         title: "Start",
         icon: {
-          path: googleRef.current.maps.SymbolPath.CIRCLE,
+          path: google.maps.SymbolPath.CIRCLE,
           fillColor: "#22c55e", // Green for start
           fillOpacity: 1,
           strokeWeight: 2,
@@ -253,12 +272,12 @@ export function MapContainer() {
         },
       })
 
-      const endMarker = new googleRef.current.maps.Marker({
+      const endMarker = new google.maps.Marker({
         position: path[path.length - 1],
         map,
         title: "End",
         icon: {
-          path: googleRef.current.maps.SymbolPath.CIRCLE,
+          path: google.maps.SymbolPath.CIRCLE,
           fillColor: "#ef4444", // Red for end
           fillOpacity: 1,
           strokeWeight: 2,
@@ -271,12 +290,12 @@ export function MapContainer() {
 
       // Add waypoint markers
       for (let i = 1; i < path.length - 1; i++) {
-        const waypointMarker = new googleRef.current.maps.Marker({
+        const waypointMarker = new google.maps.Marker({
           position: path[i],
           map,
           title: `Waypoint ${i}`,
           icon: {
-            path: googleRef.current.maps.SymbolPath.CIRCLE,
+            path: google.maps.SymbolPath.CIRCLE,
             fillColor: "#f59e0b", // Amber for waypoints
             fillOpacity: 1,
             strokeWeight: 2,
@@ -288,7 +307,7 @@ export function MapContainer() {
       }
 
       // Fit map to route bounds
-      const bounds = new googleRef.current.maps.LatLngBounds()
+      const bounds = new google.maps.LatLngBounds()
       path.forEach((point) => bounds.extend(point))
       map.fitBounds(bounds)
 
@@ -301,49 +320,8 @@ export function MapContainer() {
     [map, toast],
   )
 
-  // Define addMarkerToMap before it's used
-  const addMarkerToMap = useCallback(
-    (location: Location) => {
-      if (!map || !googleRef.current) return
-  
-      // Skip if marker already exists
-      if (googleMarkers.current.has(location.id)) return
-  
-      const marker = new googleRef.current.maps.Marker({
-        position: { lat: location.lat, lng: location.lng },
-        map,
-        title: location.name,
-        // Remove custom icon configuration to use default marker
-      })
-
-      // Add info window
-      const infoWindow = new googleRef.current.maps.InfoWindow({
-        content: `
-          <div>
-            <strong>${location.name}</strong><br/>
-            ${formatLocation(location.lat, location.lng)}<br/>
-            <span style="color: ${location.is_public ? "#22c55e" : "#64748b"}">
-              ${location.is_public ? "Public" : "Private"}
-            </span>
-          </div>
-        `,
-      })
-
-      marker.addListener("click", () => {
-        // Close all other info windows
-        infoWindows.current.forEach((window) => window.close())
-        infoWindow.open(map, marker)
-      })
-  
-      // Store references
-      googleMarkers.current.set(location.id, marker)
-      infoWindows.current.set(location.id, infoWindow)
-    },
-    [map]
-  )
-
   const handlePlaceSelect = async (prediction: google.maps.places.AutocompletePrediction) => {
-    if (!placesService.current || !map || !googleRef.current) return
+    if (!placesService.current || !map) return
 
     const request = {
       placeId: prediction.place_id,
@@ -356,7 +334,6 @@ export function MapContainer() {
           lat: place.geometry.location.lat(),
           lng: place.geometry.location.lng(),
         }
-
         map.panTo(location)
         map.setZoom(15)
         setSearchInput("")
@@ -373,19 +350,24 @@ export function MapContainer() {
       return
     }
 
-    const request = {
-      input: value,
-      types: ["geocode", "establishment"],
-      //componentRestrictions: { country: "za" }, // Change this to your desired country code
-    }
-
-    autocompleteService.current.getPlacePredictions(request, (predictions, status) => {
-      if (status === google.maps.places.PlacesServiceStatus.OK && predictions) {
-        setSuggestions(predictions)
-      } else {
-        setSuggestions([])
+    // Add a small delay to avoid too many API calls
+    const timeoutId = setTimeout(() => {
+      const request = {
+        input: value,
+        types: ["geocode", "establishment"],
+        //componentRestrictions: { country: "za" }, // Change this to your desired country code
       }
-    })
+
+      autocompleteService.current!.getPlacePredictions(request, (predictions, status) => {
+        if (status === google.maps.places.PlacesServiceStatus.OK && predictions) {
+          setSuggestions(predictions)
+        } else {
+          setSuggestions([])
+        }
+      })
+    }, 300)
+
+    return () => clearTimeout(timeoutId)
   }
 
   const saveLocationFromCoordinates = async (locationData: {
@@ -414,9 +396,6 @@ export function MapContainer() {
       if (error) throw error
 
       const newLocation = data[0]
-
-      // Add marker to map
-      addMarkerToMap(newLocation)
 
       // Update local state
       setMarkers((prev) => [...prev, newLocation])
@@ -464,13 +443,6 @@ export function MapContainer() {
       // Combine locations
       const allLocations = [...(privateLocations || []), ...(publicLocations || [])]
       setMarkers(allLocations)
-
-      // Add markers to map
-      if (map) {
-        allLocations.forEach((location) => {
-          addMarkerToMap(location)
-        })
-      }
     } catch (error: any) {
       toast({
         title: "Error loading locations",
@@ -478,11 +450,11 @@ export function MapContainer() {
         variant: "destructive",
       })
     }
-  }, [map, toast, user, addMarkerToMap])
+  }, [toast, user])
 
   // Check for URL parameters to center the map or display a route
   useEffect(() => {
-    if (!map || !googleRef.current) return
+    if (!map) return
 
     const lat = searchParams.get("lat")
     const lng = searchParams.get("lng")
@@ -493,11 +465,9 @@ export function MapContainer() {
         lat: Number.parseFloat(lat),
         lng: Number.parseFloat(lng),
       }
-
       // Center map on the specified location
       map.panTo(position)
       map.setZoom(15)
-
       // Create a temporary marker
       createTempMarker(position)
     } else if (routeId) {
@@ -541,9 +511,6 @@ export function MapContainer() {
         tempMarkerRef.current = null
       }
 
-      // Add permanent marker to map
-      addMarkerToMap(newLocation)
-
       // Update local state
       setMarkers((prev) => [...prev, newLocation])
       setSelectedLocation(null)
@@ -562,184 +529,121 @@ export function MapContainer() {
     }
   }
 
-  // Memoize the dialog to prevent unnecessary re-renders
-  const locationDialog = useMemo(
-    () => (
-      <Dialog
-        open={!!selectedLocation}
-        onOpenChange={(open) => {
-          if (!open) {
-            setSelectedLocation(null)
-            // Remove temporary marker when dialog is closed without saving
-            if (tempMarkerRef.current) {
-              tempMarkerRef.current.setMap(null)
-              tempMarkerRef.current = null
-            }
-          }
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Save Location</DialogTitle>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid gap-2">
-              <Label htmlFor="name">Location Name</Label>
-              <Input
-                id="name"
-                placeholder="Enter a name for this location"
-                value={locationName}
-                onChange={(e) => setLocationName(e.target.value)}
-              />
-            </div>
-            <div className="flex items-center space-x-2">
-              <Switch id="public" checked={isPublic} onCheckedChange={setIsPublic} />
-              <Label htmlFor="public">Make this location public</Label>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setSelectedLocation(null)
-                // Remove temporary marker when canceling
-                if (tempMarkerRef.current) {
-                  tempMarkerRef.current.setMap(null)
-                  tempMarkerRef.current = null
-                }
-              }}
-            >
-              Cancel
-            </Button>
-            <Button onClick={saveLocation}>Save</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    ),
-    [selectedLocation, locationName, isPublic, saveLocation],
-  )
+  const handleLocationUpdate = useCallback((position: { lat: number; lng: number }) => {
+    // Optional: You can add additional logic here when location updates
+    console.log("User location updated:", position)
+  }, [])
 
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Element
+      if (!target.closest(".relative")) {
+        setSuggestions([])
+      }
+    }
+
+    document.addEventListener("click", handleClickOutside)
+    return () => document.removeEventListener("click", handleClickOutside)
+  }, [])
 
   return (
-    <div className="h-full relative"
-    role="region"
-    aria-label="Map container"
-    aria-busy={isLoading}>
-      
-      <div ref={mapRef} className="map-container" />
+    <div className="h-full relative" role="region" aria-label="Map container" aria-busy={isLoading}>
+      {isLoading && (
+        <div className="absolute inset-0 flex items-center justify-center bg-gray-100 z-10">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
+            <p className="text-gray-600">Loading map...</p>
+          </div>
+        </div>
+      )}
 
-      {/* Search input */}
-      <div className="absolute top-4 left-4 z-10 w-64">
-        <div className="relative">
-          <Input
-            type="text"
-            placeholder="Search locations..."
-            value={searchInput}
-            onChange={(e) => handleSearchChange(e.target.value)}
-            className="pl-10 pr-4 py-2 w-full bg-white shadow-lg"
-          />
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+      {/* Google Places Search Bar */}
+      <div className="absolute top-4 left-4 right-4 z-20">
+        <div className="relative max-w-md mx-auto">
+          <div className="relative">
+            <input
+              type="text"
+              value={searchInput}
+              onChange={(e) => handleSearchChange(e.target.value)}
+              placeholder="Search for places..."
+              className="w-full px-4 py-3 pr-10 text-sm bg-white border border-gray-300 rounded-lg shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              autoComplete="off"
+            />
+            <div className="absolute inset-y-0 right-0 flex items-center pr-3">
+              <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                />
+              </svg>
+            </div>
+          </div>
 
+          {/* Search Suggestions Dropdown */}
           {suggestions.length > 0 && (
-            <Card className="absolute mt-1 w-full shadow-lg z-50">
-              <ul className="py-2 max-h-64 overflow-y-auto">
-                {suggestions.map((suggestion) => (
-                  <li
-                    key={suggestion.place_id}
-                    className="px-4 py-2 hover:bg-gray-100 cursor-pointer text-sm"
-                    onClick={() => handlePlaceSelect(suggestion)}
-                  >
-                    {suggestion.description}
-                  </li>
-                ))}
-              </ul>
-            </Card>
+            <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto z-30">
+              {suggestions.map((suggestion, index) => (
+                <button
+                  key={suggestion.place_id}
+                  onClick={() => handlePlaceSelect(suggestion)}
+                  className="w-full px-4 py-3 text-left text-sm hover:bg-gray-50 focus:bg-gray-50 focus:outline-none border-b border-gray-100 last:border-b-0"
+                >
+                  <div className="font-medium text-gray-900">{suggestion.structured_formatting.main_text}</div>
+                  <div className="text-gray-500 text-xs mt-1">{suggestion.structured_formatting.secondary_text}</div>
+                </button>
+              ))}
+            </div>
           )}
         </div>
       </div>
 
-      {/* Add the coordinate input button in the top right corner */}
-      <div className="absolute top-4 right-4 z-10">
-        <CoordinateInput onSaveLocation={saveLocationFromCoordinates} />
+      {/* Location Control Button */}
+      <div className="absolute top-4 right-4 z-20">
+        <LocationControl onToggle={setIsLocationEnabled} />
       </div>
 
-      {/* Floating action buttons */}
-      <div className="absolute bottom-4 right-4 flex flex-col gap-2">
-        <Dialog open={!!selectedLocation} onOpenChange={(open) => !open && setSelectedLocation(null)}>
-          <DialogTrigger asChild>
-            <Button size="icon" className="rounded-full shadow-lg">
-              <Plus className="h-5 w-5" />
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Save Location</DialogTitle>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid gap-2">
-                <Label htmlFor="name">Location Name</Label>
-                <Input
-                  id="name"
-                  placeholder="Enter a name for this location"
-                  value={locationName}
-                  onChange={(e) => setLocationName(e.target.value)}
-                />
-              </div>
-              <div className="flex items-center space-x-2">
-                <Switch id="public" checked={isPublic} onCheckedChange={setIsPublic} />
-                <Label htmlFor="public">Make this location public</Label>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setSelectedLocation(null)}>
-                Cancel
-              </Button>
-              <Button onClick={saveLocation}>Save</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+      <div ref={mapRef} className="w-full h-full" />
 
-        <Button size="icon" variant="outline" className="rounded-full shadow-lg" onClick={() => router.push("/routes")}>
-          <RouteIcon className="h-5 w-5" />
-        </Button>
+      {/* Live Location Component */}
+      <LiveLocation map={map} isEnabled={isLocationEnabled} onLocationUpdate={handleLocationUpdate} />
 
-        <Button
-          size="icon"
-          variant="outline"
-          className="rounded-full shadow-lg"
-          onClick={() => router.push("/explore")}
-        >
-          <Share2 className="h-5 w-5" />
-        </Button>
-      </div>
+      {/* Render saved location markers using CustomMarker */}
+      {markers.map((location) => (
+        <CustomMarker
+          key={location.id}
+          map={map}
+          position={{ lat: location.lat, lng: location.lng }}
+          title={location.name}
+          onClick={() => {
+            // Close all other info windows
+            infoWindows.current.forEach((window) => window.close())
 
-      {/* Saved locations panel */}
-      <Card className="absolute left-4 bottom-4 w-64 shadow-lg">
-        <div className="p-4">
-          <h3 className="font-semibold mb-2 flex items-center">
-            <MapPin className="h-4 w-4 mr-1" />
-            Saved Locations
-          </h3>
-          <div className="max-h-48 overflow-y-auto">
-            {isLoading ? (
-              <p className="text-sm text-muted-foreground">Loading...</p>
-            ) : markers.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No saved locations yet</p>
-            ) : (
-              <ul className="space-y-2">
-                {markers.map((marker) => (
-                  <li key={marker.id} className="text-sm flex items-center justify-between">
-                    <span className="truncate">{marker.name}</span>
-                    <span
-                      className={`h-2 w-2 rounded-full ${marker.is_public ? "bg-green-500" : "bg-slate-500"}`}
-                    ></span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </div>
-      </Card>
+            // Create or get info window for this location
+            let infoWindow = infoWindows.current.get(location.id)
+            if (!infoWindow) {
+              infoWindow = new google.maps.InfoWindow({
+                content: `
+                  <div>
+                    <strong>${location.name}</strong><br/>
+                    ${formatLocation(location.lat, location.lng)}<br/>
+                    <span style="color: ${location.is_public ? "#22c55e" : "#64748b"}">
+                      ${location.is_public ? "Public" : "Private"}
+                    </span>
+                  </div>
+                `,
+              })
+              infoWindows.current.set(location.id, infoWindow)
+            }
+
+            if (map) {
+              infoWindow.open(map)
+              infoWindow.setPosition({ lat: location.lat, lng: location.lng })
+            }
+          }}
+        />
+      ))}
     </div>
   )
 }

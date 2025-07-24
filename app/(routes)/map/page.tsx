@@ -1,11 +1,9 @@
 import { Suspense } from "react"
 import { MapContainer } from "@/components/mapscomponents/map-container"
 
-
-
 import { MapSkeleton } from "@/components/mapscomponents/map-skeleton"
 
-export default function HomePage() {
+export default function MapsPage() {
   return (
     <main className="flex flex-col h-screen">
       <div className="flex-1 relative">
