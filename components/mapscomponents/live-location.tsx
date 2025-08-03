@@ -101,25 +101,22 @@ export function LiveLocation({ map, isEnabled, onLocationUpdate }: LiveLocationP
   }, [watchId])
 
   useEffect(() => {
-    if (isEnabled) {
+    if (isEnabled && map && typeof window !== "undefined" && window.google && window.google.maps) {
       startTracking()
     } else {
       stopTracking()
     }
 
-    // Use function form to avoid stale closure and infinite loop
     return () => {
-      // Don't depend on stopTracking in the array
       stopTracking()
     }
-    // Only depend on isEnabled, not stopTracking/startTracking
-  }, [isEnabled])
+  }, [isEnabled, map])
 
   // Create custom icon for user location
   const userLocationIcon = typeof window !== "undefined" && window.google && window.google.maps
     ? {
-        path: window.google.maps.SymbolPath.CIRCLE,
-        fillColor: "#4285F4",
+        path: window.google.maps.SymbolPath.BACKWARD_CLOSED_ARROW,
+        fillColor: "#ef4444", // Changed to red
         fillOpacity: 1,
         strokeColor: "#ffffff",
         strokeWeight: 3,
@@ -127,10 +124,11 @@ export function LiveLocation({ map, isEnabled, onLocationUpdate }: LiveLocationP
       }
     : undefined;
 
-  if (!currentPosition || !isTracking || !userLocationIcon) {
+  if (!currentPosition || !isTracking || !userLocationIcon || !map) {
     return null
   }
 
+  // Render the user's live location using the CustomMarker component
   return (
     <CustomMarker
       map={map}
