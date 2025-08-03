@@ -127,6 +127,14 @@ export function MapContainer() {
   const router = useRouter()
   const searchParams = useSearchParams()
 
+  // Directions state
+  const [origin, setOrigin] = useState<{ lat: number; lng: number } | null>(null)
+  const [destination, setDestination] = useState<{ lat: number; lng: number } | null>(null)
+  const [travelMode, setTravelMode] = useState<'DRIVING' | 'WALKING' | 'BICYCLING' | 'TRANSIT'>('DRIVING')
+  const [routeInfo, setRouteInfo] = useState<{ distanceText: string; durationText: string } | null>(null)
+  const directionsRendererRef = useRef<any | null>(null)
+  const directionsServiceRef = useRef<any | null>(null)
+  const [isNavigating, setIsNavigating] = useState(false)
 
   // Search marker customization state (color and size)
   const [searchMarkerOptions, setSearchMarkerOptions] = useState<SearchMarkerOptions>({
@@ -145,6 +153,9 @@ export function MapContainer() {
   const autocompleteService = useRef<any | null>(null)
   const [suggestions, setSuggestions] = useState<any[]>([])
   const placesService = useRef<any | null>(null)
+
+  // Persist last computed route payload for saving
+  const lastDirectionsResultRef = useRef<any | null>(null)
 
   // Initialize map only once
   useEffect(() => {
@@ -192,6 +203,18 @@ export function MapContainer() {
 
         placesService.current = new (window as any).google.maps.places.PlacesService(googleMap)
         autocompleteService.current = new (window as any).google.maps.places.AutocompleteService()
+
+        // Initialize Directions services
+        directionsServiceRef.current = new (window as any).google.maps.DirectionsService()
+        directionsRendererRef.current = new (window as any).google.maps.DirectionsRenderer({
+          map: googleMap,
+          suppressMarkers: false,
+          preserveViewport: false,
+          polylineOptions: {
+            strokeColor: "#2563eb",
+            strokeWeight: 5,
+          },
+        })
 
         // Add click listener to map
         googleMap.addListener("click", (event: any) => {
@@ -363,6 +386,8 @@ export function MapContainer() {
 
         // Create/update the temporary search marker so the icon is visible
         createTempMarker(location)
+        // set as destination for navigation
+        setDestination(location)
 
         // Optionally set the marker title and open an info window at the searched location
         if (tempMarkerRef.current) {
@@ -406,7 +431,7 @@ export function MapContainer() {
     }
 
     // Add a small delay to avoid too many API calls
-    const timeoutId = setTimeout(() => {
+    const timeoutId = window.setTimeout(() => {
       const request = {
         input: value,
         types: ["geocode", "establishment"],
@@ -585,9 +610,12 @@ export function MapContainer() {
   }
 
   const handleLocationUpdate = useCallback((position: { lat: number; lng: number }) => {
-    // Optional: You can add additional logic here when location updates
-    console.log("User location updated:", position)
-  }, [])
+    setOrigin(position)
+    if (isNavigating && destination) {
+      // re-calc quietly to keep route fresh as user moves
+      calculateRoute(position, destination, travelMode, true)
+    }
+  }, [isNavigating, destination, travelMode])
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -599,6 +627,71 @@ export function MapContainer() {
 
     document.addEventListener("click", handleClickOutside)
     return () => document.removeEventListener("click", handleClickOutside)
+  }, [])
+
+  // Calculate and render route
+  const calculateRoute = useCallback(
+    (from: { lat: number; lng: number }, to: { lat: number; lng: number }, mode: typeof travelMode, silent = false) => {
+      if (!directionsServiceRef.current || !directionsRendererRef.current) return
+      directionsServiceRef.current.route(
+        {
+          origin: from,
+          destination: to,
+          travelMode: (window as any).google.maps.TravelMode[mode],
+          provideRouteAlternatives: false,
+        },
+        (result: any, status: any) => {
+          if (status === (window as any).google.maps.DirectionsStatus.OK) {
+            directionsRendererRef.current!.setDirections(result)
+            const leg = result.routes?.[0]?.legs?.[0]
+            if (leg) {
+              setRouteInfo({
+                distanceText: leg.distance?.text ?? "",
+                durationText: leg.duration?.text ?? "",
+              })
+              if (!silent && map) {
+                // fit bounds to route
+                const bounds = new (window as any).google.maps.LatLngBounds()
+                result.routes[0].overview_path.forEach((p: any) => bounds.extend(p))
+                map.fitBounds(bounds)
+              }
+            }
+          } else if (!silent) {
+            toast({
+              title: "Directions error",
+              description: `Failed to get directions: ${status}`,
+              variant: "destructive",
+            })
+          }
+          // keep last result for saving if available
+          if (result) {
+            lastDirectionsResultRef.current = result
+          }
+        },
+      )
+    },
+    [map, toast],
+  )
+
+  const startNavigation = useCallback(() => {
+    if (!origin) {
+      toast({ title: "Origin missing", description: "Enable live location first.", variant: "destructive" })
+      return
+    }
+    if (!destination) {
+      toast({ title: "Destination missing", description: "Search and select a destination.", variant: "destructive" })
+      return
+    }
+    setIsNavigating(true)
+    calculateRoute(origin, destination, travelMode)
+  }, [origin, destination, travelMode, calculateRoute, toast])
+
+  const stopNavigation = useCallback(() => {
+    setIsNavigating(false)
+    setRouteInfo(null)
+    if (directionsRendererRef.current) {
+      directionsRendererRef.current.setDirections({ routes: [] })
+    }
   }, [])
 
   return (
@@ -658,8 +751,48 @@ export function MapContainer() {
         </div>
       </div>
 
+      {/* Directions Controls */}
+      <div className="absolute top-4 left-4 z-30 mt-16">
+        <div className="bg-white/95 dark:bg-neutral-900/95 rounded-lg shadow p-3 flex items-center gap-2">
+          <select
+            className="border rounded px-2 py-1 text-sm bg-white dark:bg-neutral-800"
+            value={travelMode}
+            onChange={(e) => setTravelMode(e.target.value as any)}
+          >
+            <option value="DRIVING">Driving</option>
+            <option value="WALKING">Walking</option>
+            <option value="BICYCLING">Bicycling</option>
+            <option value="TRANSIT">Transit</option>
+          </select>
+          <button
+            className="px-3 py-1 rounded bg-blue-600 text-white text-sm disabled:opacity-50"
+            onClick={startNavigation}
+            disabled={!origin || !destination}
+          >
+            Navigate
+          </button>
+          <button
+            className="px-3 py-1 rounded bg-gray-200 dark:bg-neutral-700 text-sm"
+            onClick={stopNavigation}
+          >
+            Stop
+          </button>
+        </div>
+      </div>
+
+      {/* Route Info */}
+      {routeInfo && (
+        <div className="absolute top-4 right-4 z-30">
+          <div className="bg-white/95 dark:bg-neutral-900/95 rounded-lg shadow p-3 text-sm">
+            <div className="font-medium">Route</div>
+            <div className="text-gray-700 dark:text-neutral-300">Distance: {routeInfo.distanceText}</div>
+            <div className="text-gray-700 dark:text-neutral-300">ETA: {routeInfo.durationText}</div>
+          </div>
+        </div>
+      )}
+
       {/* Location Control Button */}
-      <div className="absolute top-4 right-4 z-20">
+      <div className="absolute top-4 right-4 z-20 mt-24">
         <LocationControl onToggle={setIsLocationEnabled} />
       </div>
 
@@ -701,36 +834,107 @@ export function MapContainer() {
               infoWindow.open(map)
               infoWindow.setPosition({ lat: location.lat, lng: location.lng })
             }
+
+            // Also allow quick navigate by setting destination when clicking a saved marker
+            setDestination({ lat: location.lat, lng: location.lng })
+            createTempMarker({ lat: location.lat, lng: location.lng })
           }}
         />
       ))}
 
+      {/* Floating Save (+) Button */}
+      <div className="absolute bottom-6 right-6 z-30">
+        <button
+          aria-label="Save location or route"
+          onClick={async () => {
+            if (!user) {
+              toast({ title: "Login required", description: "Please login to save.", variant: "destructive" })
+              return
+            }
+
+            // If an active route exists, save the route (directions) with origin/destination
+            const directions = directionsRendererRef.current?.getDirections?.() || lastDirectionsResultRef.current
+            if (directions && origin && destination) {
+              try {
+                const route = directions.routes?.[0]
+                const leg = route?.legs?.[0]
+                // Google JS API v3 returns overview_polyline as an encoded string on route.overview_polyline
+                const polyline = route?.overview_polyline?.toJSON?.() ?? route?.overview_polyline
+
+                const payload = {
+                  user_id: user.id,
+                  origin_lat: origin.lat,
+                  origin_lng: origin.lng,
+                  destination_lat: destination.lat,
+                  destination_lng: destination.lng,
+                  travel_mode: travelMode,
+                  distance_text: leg?.distance?.text ?? null,
+                  distance_value: leg?.distance?.value ?? null,
+                  duration_text: leg?.duration?.text ?? null,
+                  duration_value: leg?.duration?.value ?? null,
+                  overview_polyline: typeof polyline === "string" ? polyline : polyline?.points ?? null,
+                }
+
+                // Save into 'routes' table. Ensure this table exists per supabase/schema.sql
+                const { error } = await supabase.from("routes").insert([payload])
+                if (error) throw error
+
+                toast({
+                  title: "Route saved",
+                  description: `Saved directions: ${payload.distance_text ?? ""} • ${payload.duration_text ?? ""}`,
+                })
+                return
+              } catch (e: any) {
+                toast({ title: "Failed to save route", description: e.message, variant: "destructive" })
+                return
+              }
+            }
+
+            // Otherwise, save the currently selected/search location (destination or clicked position)
+            const loc = destination ?? searchMarkerPosition ?? selectedLocation
+            if (!loc) {
+              toast({
+                title: "Nothing to save",
+                description: "Select a location or create a route before saving.",
+              })
+              return
+            }
+
+            try {
+              const { data, error } = await supabase
+                .from("locations")
+                .insert([
+                  {
+                    user_id: user.id,
+                    name: locationName || "Saved location",
+                    lat: loc.lat,
+                    lng: loc.lng,
+                    is_public: isPublic,
+                  },
+                ])
+                .select()
+
+              if (error) throw error
+              if (data && data[0]) {
+                setMarkers((prev) => [...prev, data[0]])
+              }
+
+              toast({
+                title: "Location saved",
+                description: `Saved at ${formatLocation(loc.lat, loc.lng)}`,
+              })
+            } catch (e: any) {
+              toast({ title: "Failed to save location", description: e.message, variant: "destructive" })
+            }
+          }}
+          className="h-14 w-14 rounded-full bg-blue-600 hover:bg-blue-700 text-white shadow-lg flex items-center justify-center text-3xl leading-none"
+        >
+          +
+        </button>
+      </div>
+
       {/* Temporary search marker */}
       <SearchMarker map={map} position={searchMarkerPosition} options={searchMarkerOptions} />
-
-      {/* Simple example controls to demonstrate customization (can be removed or replaced by caller) */}
-      {/* <div className="absolute bottom-4 left-4 z-20 bg-white/90 dark:bg-neutral-900/90 rounded-lg shadow p-3 space-y-2">
-        <div className="flex items-center gap-2">
-          <label className="text-xs text-gray-600 dark:text-neutral-300">Color</label>
-          <input
-            type="color"
-            value={searchMarkerOptions.color}
-            onChange={(e) => customizeSearchMarker({ color: e.target.value })}
-            className="h-6 w-10 p-0 border rounded"
-          />
-        </div>
-        <div className="flex items-center gap-2">
-          <label className="text-xs text-gray-600 dark:text-neutral-300">Size</label>
-          <input
-            type="range"
-            min={6}
-            max={18}
-            value={searchMarkerOptions.size}
-            onChange={(e) => customizeSearchMarker({ size: Number(e.target.value) })}
-            className="w-32"
-          />
-        </div>
-      </div> */}
     </div>
   )
 }
