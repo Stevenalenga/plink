@@ -784,9 +784,55 @@ export function MapContainer() {
         </div>
       )}
 
-      {/* Location Control Button */}
-      <div className="absolute top-4 right-4 z-20 mt-24">
-        <LocationControl onToggle={setIsLocationEnabled} />
+      {/* Location Control Button + Add Location button (top-right cluster) */}
+      <div
+        className="
+          absolute top-4 right-4 z-[2147483644]
+          supports-[padding:max(0px)]:pr-[max(1rem,env(safe-area-inset-right))]
+          supports-[padding:max(0px)]:pt-[max(1rem,env(safe-area-inset-top))]
+          flex flex-col items-end gap-3
+        "
+      >
+        <div className="pointer-events-auto">
+          <LocationControl onToggle={setIsLocationEnabled} />
+        </div>
+
+        {/* Moved Add (+) next to My Location (stacked with small gap) */}
+        <div className="pointer-events-auto">
+          <button
+            aria-label="Add location"
+            onClick={() => {
+              const loc = destination ?? searchMarkerPosition ?? origin
+              if (loc) {
+                setSelectedLocation({ lat: loc.lat, lng: loc.lng })
+                setIsSaveDialogOpen(true)
+                if (map) {
+                  map.panTo(loc)
+                  map.setZoom(15)
+                }
+              } else {
+                setIsSaveDialogOpen(true)
+                toast({
+                  title: "No location selected",
+                  description:
+                    "Click on the map or search a place to choose a location. You can also enable live location.",
+                })
+              }
+            }}
+            className="
+              h-12 w-12 rounded-full shadow-lg
+              bg-primary text-primary-foreground
+              hover:bg-primary/90
+              flex items-center justify-center text-2xl leading-none
+              border border-border
+              transition-colors
+            "
+            style={{ lineHeight: 0 }}
+            title="Add location"
+          >
+            <span className="select-none" aria-hidden="true">+</span>
+          </button>
+        </div>
       </div>
 
       <div ref={mapRef} className="w-full h-full" />
@@ -847,52 +893,7 @@ export function MapContainer() {
         />
       ))}
 
-      {/* Floating Add (+) Button opens save dialog; themed and safe-area aware */}
-      <div
-        className="
-          absolute z-[2147483644]
-          right-4 bottom-4
-          supports-[padding:max(0px)]:pr-[max(1rem,env(safe-area-inset-right))]
-          supports-[padding:max(0px)]:pb-[max(1rem,env(safe-area-inset-bottom))]
-          pointer-events-none
-        "
-      >
-        <div className="pointer-events-auto">
-          <button
-            aria-label="Add location"
-            onClick={() => {
-              const loc = destination ?? searchMarkerPosition ?? origin
-              if (loc) {
-                setSelectedLocation({ lat: loc.lat, lng: loc.lng })
-                setIsSaveDialogOpen(true)
-                if (map) {
-                  map.panTo(loc)
-                  map.setZoom(15)
-                }
-              } else {
-                setIsSaveDialogOpen(true)
-                toast({
-                  title: "No location selected",
-                  description:
-                    "Click on the map or search a place to choose a location. You can also enable live location.",
-                })
-              }
-            }}
-            className="
-              h-14 w-14 rounded-full shadow-lg
-              bg-primary text-primary-foreground
-              hover:bg-primary/90
-              flex items-center justify-center text-3xl leading-none
-              border border-border
-              transition-colors
-            "
-            style={{ lineHeight: 0 }}
-            title="Add location"
-          >
-            <span className="select-none" aria-hidden="true">+</span>
-          </button>
-        </div>
-      </div>
+      {/* Removed bottom-right Add (+); moved to top-right cluster near My Location */}
 
       {/* Temporary search marker */}
       <SearchMarker map={map} position={searchMarkerPosition} options={searchMarkerOptions} />
