@@ -950,8 +950,8 @@ export function MapContainer() {
           }
           // Prefer user-edited selectedLocation if present
           const candidate = selectedLocation ?? destination ?? searchMarkerPosition ?? origin
-          if (!candidate) {
-            toast({ title: "No coordinates", description: "Pick a spot on the map first.", variant: "destructive" })
+          if (!candidate || typeof candidate.lat !== 'number' || typeof candidate.lng !== 'number') {
+            toast({ title: "Invalid coordinates", description: "Please enter valid latitude and longitude.", variant: "destructive" })
             return
           }
           try {
