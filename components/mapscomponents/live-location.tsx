@@ -6,7 +6,7 @@ import { CustomMarker } from "./custom-marker"
 
 
 interface LiveLocationProps {
-  map: google.maps.Map | null
+  map: any | null
   isEnabled: boolean
   onLocationUpdate?: (position: { lat: number; lng: number }) => void
 }
@@ -101,7 +101,7 @@ export function LiveLocation({ map, isEnabled, onLocationUpdate }: LiveLocationP
   }, [watchId])
 
   useEffect(() => {
-    if (isEnabled && map && typeof window !== "undefined" && window.google && window.google.maps) {
+    if (isEnabled && map && typeof window !== "undefined" && window.google && window.google.maps && window.google.maps.SymbolPath) {
       startTracking()
     } else {
       stopTracking()
@@ -113,7 +113,7 @@ export function LiveLocation({ map, isEnabled, onLocationUpdate }: LiveLocationP
   }, [isEnabled, map])
 
   // Create custom icon for user location
-  const userLocationIcon = typeof window !== "undefined" && window.google && window.google.maps
+  const userLocationIcon = typeof window !== "undefined" && window.google && window.google.maps && window.google.maps.SymbolPath
     ? {
         path: window.google.maps.SymbolPath.BACKWARD_CLOSED_ARROW,
         fillColor: "#ef4444", // Changed to red
@@ -135,7 +135,7 @@ export function LiveLocation({ map, isEnabled, onLocationUpdate }: LiveLocationP
       position={currentPosition}
       title="Your Location"
       icon={userLocationIcon}
-      animation={window.google.maps.Animation.BOUNCE}
+      animation={window.google && window.google.maps ? window.google.maps.Animation.BOUNCE : undefined}
     />
   )
 }

@@ -44,6 +44,27 @@ CREATE TABLE route_points (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- Followers table
+CREATE TABLE followers (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  follower_id UUID REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+  following_id UUID REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  UNIQUE(follower_id, following_id)
+);
+
+-- Add visibility columns
+ALTER TABLE locations ADD COLUMN visibility TEXT DEFAULT 'private' CHECK (visibility IN ('public', 'followers', 'private'));
+ALTER TABLE routes ADD COLUMN visibility TEXT DEFAULT 'private' CHECK (visibility IN ('public', 'followers', 'private'));
+
+-- Migrate existing is_public to visibility
+UPDATE locations SET visibility = CASE WHEN is_public THEN 'public' ELSE 'private' END;
+UPDATE routes SET visibility = CASE WHEN is_public THEN 'public' ELSE 'private' END;
+
+-- Drop old columns
+ALTER TABLE locations DROP COLUMN is_public;
+ALTER TABLE routes DROP COLUMN is_public;
+
 -- Create RLS policies
 
 -- Users table policies
@@ -62,7 +83,11 @@ ALTER TABLE locations ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Anyone can view public locations"
   ON locations FOR SELECT
-  USING (is_public = TRUE);
+  USING (visibility = 'public');
+
+CREATE POLICY "Users can view locations shared with followers"
+  ON locations FOR SELECT
+  USING (visibility = 'followers' AND auth.uid() IN (SELECT follower_id FROM followers WHERE following_id = user_id));
 
 CREATE POLICY "Users can view their own locations"
   ON locations FOR SELECT
@@ -85,7 +110,11 @@ ALTER TABLE routes ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Anyone can view public routes"
   ON routes FOR SELECT
-  USING (is_public = TRUE);
+  USING (visibility = 'public');
+
+CREATE POLICY "Users can view routes shared with followers"
+  ON routes FOR SELECT
+  USING (visibility = 'followers' AND auth.uid() IN (SELECT follower_id FROM followers WHERE following_id = user_id));
 
 CREATE POLICY "Users can view their own routes"
   ON routes FOR SELECT
@@ -109,7 +138,13 @@ ALTER TABLE route_points ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Anyone can view points for public routes"
   ON route_points FOR SELECT
   USING (
-    (SELECT is_public FROM routes WHERE id = route_id) = TRUE
+    (SELECT visibility FROM routes WHERE id = route_id) = 'public'
+  );
+
+CREATE POLICY "Users can view points for routes shared with followers"
+  ON route_points FOR SELECT
+  USING (
+    (SELECT visibility FROM routes WHERE id = route_id) = 'followers' AND auth.uid() IN (SELECT follower_id FROM followers WHERE following_id = (SELECT user_id FROM routes WHERE id = route_id))
   );
 
 CREATE POLICY "Users can view points for their own routes"
@@ -135,6 +170,21 @@ CREATE POLICY "Users can delete points for their own routes"
   USING (
     (SELECT user_id FROM routes WHERE id = route_id) = auth.uid()
   );
+
+-- Followers table policies
+ALTER TABLE followers ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view their own followers/following"
+  ON followers FOR SELECT
+  USING (auth.uid() = follower_id OR auth.uid() = following_id);
+
+CREATE POLICY "Users can follow others"
+  ON followers FOR INSERT
+  WITH CHECK (auth.uid() = follower_id);
+
+CREATE POLICY "Users can unfollow"
+  ON followers FOR DELETE
+  USING (auth.uid() = follower_id);
 
 -- Create functions and triggers
 

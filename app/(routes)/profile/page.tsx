@@ -6,7 +6,7 @@ import { useUser } from "@/hooks/use-user"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { MapPin, RouteIcon, Settings, Share2, Trash2 } from "lucide-react"
+import { MapPin, RouteIcon, Settings, Share2, Trash2, Users, UserPlus } from "lucide-react"
 import { supabase } from "@/lib/supabase"
 import { useToast } from "@/hooks/use-toast"
 import type { Tables } from "@/lib/supabase"
@@ -22,6 +22,8 @@ export default function ProfilePage() {
   const [locations, setLocations] = useState<Location[]>([])
   const [routes, setRoutes] = useState<Route[]>([])
   const [isDataLoading, setIsDataLoading] = useState(true)
+  const [followersCount, setFollowersCount] = useState(0)
+  const [followingCount, setFollowingCount] = useState(0)
   const router = useRouter()
   const { toast } = useToast()
 
@@ -52,6 +54,23 @@ export default function ProfilePage() {
 
         if (routeError) throw routeError
         setRoutes(routeData || [])
+
+        // Fetch follower counts
+        const { count: followers, error: followersError } = await supabase
+          .from("followers")
+          .select("*", { count: "exact", head: true })
+          .eq("following_id", user.id)
+
+        if (followersError) throw followersError
+        setFollowersCount(followers || 0)
+
+        const { count: following, error: followingError } = await supabase
+          .from("followers")
+          .select("*", { count: "exact", head: true })
+          .eq("follower_id", user.id)
+
+        if (followingError) throw followingError
+        setFollowingCount(following || 0)
       } catch (error: any) {
         toast({
           title: "Error loading profile data",
@@ -148,6 +167,18 @@ export default function ProfilePage() {
                   <RouteIcon className="h-4 w-4 text-muted-foreground" />
                   <span>{routes.length} Saved Routes</span>
                 </div>
+                <div className="flex items-center gap-2">
+                  <Users className="h-4 w-4 text-muted-foreground" />
+                  <Button variant="link" className="p-0 h-auto" asChild>
+                    <a href="/followers">{followersCount} Followers</a>
+                  </Button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <UserPlus className="h-4 w-4 text-muted-foreground" />
+                  <Button variant="link" className="p-0 h-auto" asChild>
+                    <a href="/following">{followingCount} Following</a>
+                  </Button>
+                </div>
               </div>
             </CardContent>
             <CardFooter className="flex flex-col gap-2">
@@ -190,7 +221,7 @@ export default function ProfilePage() {
                             <p className="text-sm text-muted-foreground">
                               {formatLocation(location.lat, location.lng)}
                             </p>
-                            <p className="text-xs text-muted-foreground">{location.is_public ? "Public" : "Private"}</p>
+                            <p className="text-xs text-muted-foreground capitalize">{location.visibility}</p>
                           </div>
                           <div className="flex items-center gap-2">
                             <Button
@@ -235,7 +266,7 @@ export default function ProfilePage() {
                           <div>
                             <h4 className="font-medium">{route.name}</h4>
                             <p className="text-sm text-muted-foreground">
-                              {route.description} • {route.is_public ? "Public" : "Private"}
+                              {route.description} • <span className="capitalize">{route.visibility}</span>
                             </p>
                           </div>
                           <div className="flex items-center gap-2">

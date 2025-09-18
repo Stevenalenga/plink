@@ -4,24 +4,24 @@ import { useEffect, useRef } from "react"
 
 
 export interface MarkerProps {
-  map: google.maps.Map | null
+  map: any | null
   position: { lat: number; lng: number }
   title?: string
-  icon?: google.maps.Icon | google.maps.Symbol | string
-  animation?: google.maps.Animation
+  icon?: any | string
+  animation?: any
   onClick?: () => void
-  onMount?: (marker: google.maps.Marker) => void
-  onUnmount?: (marker: google.maps.Marker) => void
+  onMount?: (marker: any) => void
+  onUnmount?: (marker: any) => void
 }
 
 export function CustomMarker({ map, position, title, icon, animation, onClick, onMount, onUnmount }: MarkerProps) {
-  const markerRef = useRef<google.maps.Marker | null>(null)
+  const markerRef = useRef<any | null>(null)
 
-  // Create marker only when map is ready
+  // Create marker only when map and google maps API are ready
   useEffect(() => {
-    if (!map) return
+    if (!map || !window.google || !window.google.maps) return
 
-    const marker = new google.maps.Marker({
+    const marker = new window.google.maps.Marker({
       position,
       map,
       title,

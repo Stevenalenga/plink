@@ -16,6 +16,7 @@ export type Tables = {
     email: string
     avatar_url: string | null
     created_at: string
+    updated_at: string
   }
   locations: {
     id: string
@@ -23,22 +24,32 @@ export type Tables = {
     name: string
     lat: number
     lng: number
-    is_public: boolean
+    visibility: 'public' | 'followers' | 'private'
     created_at: string
+    updated_at: string
   }
   routes: {
     id: string
     user_id: string
     name: string
-    description: string
-    is_public: boolean
+    description: string | null
+    visibility: 'public' | 'followers' | 'private'
     created_at: string
+    updated_at: string
   }
   route_points: {
     id: string
     route_id: string
     lat: number
     lng: number
-    order: number
+    order_index: number
+    name: string | null
+    created_at: string
+  }
+  followers: {
+    id: string
+    follower_id: string
+    following_id: string
+    created_at: string
   }
 }

@@ -2,15 +2,15 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Switch } from "@/components/ui/switch"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
 
 export function LocationDialog({
   open,
   locationName,
-  isPublic,
+  visibility,
   setLocationName,
-  setIsPublic,
+  setVisibility,
   onCancel,
   onSave,
   lat,
@@ -20,9 +20,9 @@ export function LocationDialog({
 }: {
   open: boolean
   locationName: string
-  isPublic: boolean
+  visibility: "public" | "followers" | "private"
   setLocationName: (v: string) => void
-  setIsPublic: (v: boolean) => void
+  setVisibility: (v: "public" | "followers" | "private") => void
   onCancel: () => void
   onSave: () => void
   lat?: number | null
@@ -44,7 +44,9 @@ export function LocationDialog({
         </DialogHeader>
         <div className="grid gap-4 py-2">
           <div className="grid gap-2">
-            <Label htmlFor="name" className="text-foreground">Location Name</Label>
+            <Label htmlFor="name" className="text-foreground">
+              Location Name
+            </Label>
             <Input
               id="name"
               placeholder="Enter a name for this location"
@@ -96,12 +98,28 @@ export function LocationDialog({
             </div>
           </div>
           <div className="flex items-center space-x-2">
-            <Switch id="public" checked={isPublic} onCheckedChange={setIsPublic} />
-            <Label htmlFor="public" className="text-foreground">Make this location public</Label>
+            <Label htmlFor="visibility" className="text-foreground">
+              Visibility
+            </Label>
+            <Select value={visibility} onValueChange={setVisibility}>
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="z-[2147483647]">
+                <SelectItem value="private">Private</SelectItem>
+                <SelectItem value="followers">Followers only</SelectItem>
+                <SelectItem value="public">Public</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={onCancel} aria-label="Cancel" className="border-border text-foreground">
+          <Button
+            variant="outline"
+            onClick={onCancel}
+            aria-label="Cancel"
+            className="border-border text-foreground bg-transparent"
+          >
             Cancel
           </Button>
           <Button onClick={onSave} aria-label="Save Location" className="text-foreground">

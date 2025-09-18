@@ -26,8 +26,13 @@ type Location = {
   name: string
   lat: number
   lng: number
-  is_public: boolean
+  visibility: 'public' | 'followers' | 'private'
   user_id: string
+  users?: {
+    id: string
+    name: string
+    avatar_url: string | null
+  }
 }
 
 // Mock route data for demonstration
@@ -66,25 +71,60 @@ const mockRoutes = {
 // Function to load Google Maps script
 const loadGoogleMapsScript = (apiKey: string): Promise<void> => {
   return new Promise((resolve, reject) => {
-    // Check if Google Maps is already loaded
-    if (typeof window !== "undefined" && window.google && window.google.maps) {
+    // Check if Google Maps is already fully loaded
+    if (typeof window !== "undefined" && window.google && window.google.maps && window.google.maps.Map) {
       resolve()
       return
     }
+
     // Check if script is already being loaded
     const existingScript = document.querySelector('script[src*="maps.googleapis.com"]')
     if (existingScript) {
-      existingScript.addEventListener("load", () => resolve())
-      existingScript.addEventListener("error", reject)
+      // Poll for API readiness with timeout
+      let attempts = 0
+      const maxAttempts = 200 // 10 seconds at 50ms intervals
+      const checkApiReady = () => {
+        if (window.google && window.google.maps && window.google.maps.Map) {
+          resolve()
+        } else if (attempts >= maxAttempts) {
+          reject(new Error("Google Maps API not fully loaded after waiting for existing script"))
+        } else {
+          attempts++
+          setTimeout(checkApiReady, 50)
+        }
+      }
+      checkApiReady()
+      existingScript.addEventListener("error", () => reject(new Error("Existing Google Maps script failed to load")))
       return
     }
-    // Create and load the script
+
+    // Create and load new script
     const script = document.createElement("script")
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places`
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&loading=async`
     script.async = true
     script.defer = true
-    script.onload = () => resolve()
-    script.onerror = () => reject(new Error("Failed to load Google Maps script"))
+    
+    let loadAttempts = 0
+    const maxLoadAttempts = 200 // 10 seconds
+    
+    const checkAfterLoad = () => {
+      if (window.google && window.google.maps && window.google.maps.Map) {
+        resolve()
+      } else if (loadAttempts >= maxLoadAttempts) {
+        reject(new Error("Google Maps API not fully loaded after 10 seconds"))
+      } else {
+        loadAttempts++
+        setTimeout(checkAfterLoad, 50)
+      }
+    }
+    
+    script.onload = () => {
+      // Start polling immediately after script loads
+      checkAfterLoad()
+    }
+    
+    script.onerror = () => reject(new Error("Failed to load Google Maps script from Google servers"))
+    
     document.head.appendChild(script)
   })
 }
@@ -94,7 +134,7 @@ export function MapContainer() {
   const [map, setMap] = useState<any | null>(null)
   const [markers, setMarkers] = useState<Location[]>([])
   const [selectedLocation, setSelectedLocation] = useState<{ lat: number; lng: number } | null>(null)
-  const [isPublic, setIsPublic] = useState(true)
+  const [visibility, setVisibility] = useState<"public" | "followers" | "private">("private")
   const [locationName, setLocationName] = useState("")
   const [isLoading, setIsLoading] = useState(true)
   const [isLocationEnabled, setIsLocationEnabled] = useState(false)
@@ -136,101 +176,70 @@ export function MapContainer() {
   // Persist last computed route payload for saving
   const lastDirectionsResultRef = useRef<any | null>(null)
 
-  // Initialize map only once
-  useEffect(() => {
-    if (!NEXT_PUBLIC_GOOGLE_MAPS_API_KEY) {
-      toast({
-        title: "API Key Missing",
-        description: "Google Maps API key is not configured",
-        variant: "destructive",
-      })
-      setIsLoading(false)
+  // Load locations only for logged-in users
+  const loadLocations = useCallback(async () => {
+    if (!user) {
+      setMarkers([])
       return
     }
-
-    let googleMap: any | null = null
-    const initializeMap = async () => {
-      if (!mapRef.current) {
-        console.error("mapRef is not attached to a DOM element.")
-        return
+    
+    try {
+      setIsLoading(true)
+      console.log("Loading locations for user:", user.id)
+      
+      // First get the list of users being followed
+      const { data: following, error: followingError } = await supabase
+        .from('followers')
+        .select('following_id')
+        .eq('follower_id', user.id)
+      
+      if (followingError) {
+        console.error("Error loading following list:", followingError)
+        throw followingError
       }
 
-      try {
-        // Load Google Maps script first
-        await loadGoogleMapsScript(NEXT_PUBLIC_GOOGLE_MAPS_API_KEY as string)
+      const followingIds = following?.map(f => f.following_id) || []
+      console.log("Following IDs:", followingIds)
 
-        // Now we can safely use google.maps
-        googleMap = new window.google.maps.Map(mapRef.current, {
-          center: { lat: 0, lng: 0 }, // Default to center of the world
-          zoom: 3, // Zoom out to show more of the world
-          mapTypeControl: false,
-          streetViewControl: false,
-          fullscreenControl: false,
-          styles: [
-            {
-              featureType: "poi",
-              elementType: "labels",
-              stylers: [{ visibility: "off" }],
-            },
-          ],
-        })
-        setMap(googleMap)
-        // Defer clearing loading state to next tick so initial render keeps aria-busy="true"
-        setTimeout(() => setIsLoading(false), 0)
-
-        placesService.current = new window.google.maps.places.PlacesService(googleMap)
-        autocompleteService.current = new window.google.maps.places.AutocompleteService()
-
-        // Initialize Directions services
-        directionsServiceRef.current = new window.google.maps.DirectionsService()
-        directionsRendererRef.current = new window.google.maps.DirectionsRenderer({
-          map: googleMap,
-          suppressMarkers: false,
-          preserveViewport: false,
-          polylineOptions: {
-            strokeColor: "#2563eb",
-            strokeWeight: 5,
-          },
-        })
-
-        // Add click listener to map
-        googleMap.addListener("click", (event: any) => {
-          if (!event.latLng) return
-
-          if (isAuthenticated) {
-            setSelectedLocation({
-              lat: event.latLng.lat(),
-              lng: event.latLng.lng(),
-            })
-          } else {
-            toast({
-              title: "Login required",
-              description: "Please login to save locations",
-              variant: "destructive",
-            })
-          }
-        })
-      } catch (error) {
-        console.error("Error loading Google Maps:", error)
-        toast({
-          title: "Error",
-          description: "Failed to load Google Maps",
-          variant: "destructive",
-        })
-        // Ensure initial paint reflects loading state even on instant errors/mocks
-        setTimeout(() => setIsLoading(false), 0)
+      // Get all relevant locations in one query
+      const { data: allLocations, error: locationsError } = await supabase
+        .from("locations")
+        .select(`
+          *,
+          users (
+            id,
+            name,
+            avatar_url
+          )
+        `)
+        .or(
+          `visibility.eq.public,user_id.eq.${user.id}${
+            followingIds.length > 0 
+              ? `,and(visibility.eq.followers,user_id.in.(${followingIds.join(",")}))`
+              : ""
+          }`
+        )
+        .order("created_at", { ascending: false })
+      
+      if (locationsError) {
+        console.error("Error loading locations:", locationsError)
+        throw locationsError
       }
-    }
 
-    initializeMap()
-
-    // Cleanup function
-    return () => {
-      // Clear all info windows
-      infoWindows.current.forEach((window) => window.close())
-      infoWindows.current.clear()
+      console.log("Loaded locations:", allLocations)
+      setMarkers(allLocations || [])
+      
+    } catch (error: any) {
+      console.error("Error loading locations:", error)
+      toast({
+        title: "Error loading locations",
+        description: error.message || "Failed to load locations",
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoading(false)
     }
-  }, [isAuthenticated, toast])
+  }, [toast, user])
 
   // Function to create/update the temporary search marker position
   const createTempMarker = useCallback(
@@ -339,95 +348,156 @@ export function MapContainer() {
     [map, toast],
   )
 
-  const handlePlaceSelect = async (prediction: any) => {
-    if (!placesService.current || !map) return
-
-    const request = {
-      placeId: prediction.place_id,
-      fields: ["geometry", "name"],
-    }
-
-    placesService.current.getDetails(request, (place: any, status: any) => {
-      if (window.google && status === window.google.maps.places.PlacesServiceStatus.OK && place?.geometry?.location) {
-        const placeName = place.name || "Searched location"
-        const location = {
-          lat: place.geometry.location.lat(),
-          lng: place.geometry.location.lng(),
-        }
-
-        // Pan and zoom to the selected place
-        map.panTo(location)
-        map.setZoom(15)
-
-        // Create/update the temporary search marker so the icon is visible
-        createTempMarker(location)
-
-        // set as destination for navigation
-        setDestination(location)
-
-        // If the Save dialog is currently open, sync its coordinate fields to the new search
-        if (isSaveDialogOpen) {
-          setSelectedLocation({ lat: location.lat, lng: location.lng })
-          // Ensure the visible temp marker and viewport reflect updates too
-          setSearchMarkerPosition(location)
-        }
-
-        // Optionally set the marker title and open an info window at the searched location
-        if (tempMarkerRef.current) {
-          tempMarkerRef.current.setTitle(placeName)
-          const infoWindow = new window.google.maps.InfoWindow({
-            content: `
-              <div>
-                <strong>${placeName}</strong><br/>
-                ${formatLocation(location.lat, location.lng)}
-              </div>
-            `,
-            position: location,
-          })
-          // Close other info windows and open this one anchored to the temp marker
-          infoWindows.current.forEach((win) => win.close())
-          infoWindow.open(map, tempMarkerRef.current)
-        }
-
-        setSearchInput("")
-        setSuggestions([])
-      }
-    })
-  }
-
-  // Public API: customize only color and size of the temporary search marker
-  const customizeSearchMarker = useCallback((options: { color?: string; size?: number }) => {
-    setSearchMarkerOptions((prev) => ({
-      color: options.color ?? prev.color,
-      size: typeof options.size === "number" ? options.size : prev.size,
-    }))
-  }, [])
-
-  const handleSearchChange = (value: string) => {
-    setSearchInput(value)
-    if (!value.trim() || !autocompleteService.current) {
-      setSuggestions([])
+  // Initialize map only once
+  useEffect(() => {
+    if (!NEXT_PUBLIC_GOOGLE_MAPS_API_KEY) {
+      toast({
+        title: "Configuration Error",
+        description: "Google Maps API key is not configured",
+        variant: "destructive",
+      })
+      setIsLoading(false)
       return
     }
 
-    // Add a small delay to avoid too many API calls
-    const timeoutId = window.setTimeout(() => {
-      const request = {
-        input: value,
-        types: ["geocode", "establishment"],
-        //componentRestrictions: { country: "za" }, // Change this to your desired country code
+    let googleMap: any | null = null
+    const initializeMap = async () => {
+      if (!mapRef.current) {
+        console.error("mapRef is not attached to a DOM element.")
+        setIsLoading(false)
+        return
       }
-      autocompleteService.current!.getPlacePredictions(request, (predictions: any, status: any) => {
-        if (window.google && status === window.google.maps.places.PlacesServiceStatus.OK && predictions) {
-          setSuggestions(predictions)
-        } else {
-          setSuggestions([])
-        }
-      })
-    }, 300)
 
-    return () => clearTimeout(timeoutId)
-  }
+      try {
+        // Load Google Maps script with robust error handling
+        await loadGoogleMapsScript(NEXT_PUBLIC_GOOGLE_MAPS_API_KEY as string)
+
+        // Final verification before creating map
+        if (!window.google || !window.google.maps || !window.google.maps.Map) {
+          throw new Error("Google Maps API verification failed - please check your API key and network connection")
+        }
+
+        // Create the map
+        googleMap = new window.google.maps.Map(mapRef.current, {
+          center: { lat: 40.7128, lng: -74.0060 }, // Default to NYC
+          zoom: 10,
+          mapTypeControl: false,
+          streetViewControl: false,
+          fullscreenControl: false,
+          styles: [
+            {
+              featureType: "poi",
+              elementType: "labels",
+              stylers: [{ visibility: "off" }],
+            },
+          ],
+        })
+
+        setMap(googleMap)
+
+        // Initialize services
+        placesService.current = new window.google.maps.places.PlacesService(googleMap)
+        autocompleteService.current = new window.google.maps.places.AutocompleteService()
+
+        // Initialize Directions services
+        directionsServiceRef.current = new window.google.maps.DirectionsService()
+        directionsRendererRef.current = new window.google.maps.DirectionsRenderer({
+          map: googleMap,
+          suppressMarkers: false,
+          preserveViewport: false,
+          polylineOptions: {
+            strokeColor: "#2563eb",
+            strokeWeight: 5,
+          },
+        })
+
+        // Add click listener to map
+        googleMap.addListener("click", (event: any) => {
+          if (!event.latLng) return
+
+          if (isAuthenticated) {
+            setSelectedLocation({
+              lat: event.latLng.lat(),
+              lng: event.latLng.lng(),
+            })
+            setIsSaveDialogOpen(true)
+          } else {
+            toast({
+              title: "Login Required",
+              description: "Please log in to save locations on the map",
+              variant: "destructive",
+            })
+          }
+        })
+
+        // Clear loading state
+        setIsLoading(false)
+
+      } catch (error: any) {
+        console.error("Google Maps initialization failed:", error)
+        toast({
+          title: "Map Loading Failed",
+          description: error.message || "Unable to load Google Maps. Please check your connection and try again.",
+          variant: "destructive",
+        })
+        setIsLoading(false)
+      }
+    }
+
+    initializeMap()
+
+    // Cleanup function
+    return () => {
+      // Clear all info windows
+      infoWindows.current.forEach((window) => window.close())
+      infoWindows.current.clear()
+      
+      // Clear directions if active
+      if (directionsRendererRef.current) {
+        directionsRendererRef.current.setMap(null)
+      }
+    }
+  }, [isAuthenticated, toast])
+
+  // Check for URL parameters to center the map or display a route
+  useEffect(() => {
+    if (!map) return
+
+    const lat = searchParams.get("lat")
+    const lng = searchParams.get("lng")
+    const routeId = searchParams.get("route")
+
+    if (lat && lng) {
+      const position = {
+        lat: Number.parseFloat(lat),
+        lng: Number.parseFloat(lng),
+      }
+      // Center map on the specified location
+      map.panTo(position)
+      map.setZoom(15)
+      // Create a temporary marker
+      createTempMarker(position)
+    } else if (routeId) {
+      // Display the route
+      displayRoute(routeId)
+    }
+  }, [map, searchParams, createTempMarker, displayRoute])
+
+  // Load locations when map is ready and user is authenticated
+  useEffect(() => {
+    if (map && user) {
+      console.log("Map and user ready, loading locations")
+      loadLocations()
+    } else if (!user) {
+      console.log("No user, clearing markers")
+      setMarkers([]) // Clear markers if logged out
+    }
+  }, [map, user, loadLocations])
+
+  // Debug effect to monitor markers state
+  useEffect(() => {
+    console.log("Current markers:", markers)
+  }, [markers])
 
   const saveLocationFromCoordinates = async (locationData: {
     lat: number
@@ -438,7 +508,7 @@ export function MapContainer() {
     if (!user) return
 
     try {
-      // Save to Supabase
+      // Save to Supabase — use 'visibility' column (map uses visibility enum)
       const { data, error } = await supabase
         .from("locations")
         .insert([
@@ -447,7 +517,7 @@ export function MapContainer() {
             name: locationData.name,
             lat: locationData.lat,
             lng: locationData.lng,
-            is_public: locationData.isPublic,
+            visibility: locationData.isPublic ? "public" : "private",
           },
         ])
         .select()
@@ -478,153 +548,10 @@ export function MapContainer() {
     }
   }
 
-  const loadLocations = useCallback(async () => {
-    if (!user) return
-
-    try {
-      // Get user's private locations
-      const { data: privateLocations, error: privateError } = await supabase
-        .from("locations")
-        .select("*")
-        .eq("user_id", user.id)
-        .eq("is_public", false)
-      if (privateError) throw privateError
-
-      // Get all public locations
-      const { data: publicLocations, error: publicError } = await supabase
-        .from("locations")
-        .select("*")
-        .eq("is_public", true)
-      if (publicError) throw publicError
-
-      // Combine locations
-      const allLocations = [...(privateLocations || []), ...(publicLocations || [])]
-      setMarkers(allLocations)
-    } catch (error: any) {
-      toast({
-        title: "Error loading locations",
-        description: error.message,
-        variant: "destructive",
-      })
-    }
-  }, [toast, user])
-
-  // Check for URL parameters to center the map or display a route
-  useEffect(() => {
-    if (!map) return
-
-    const lat = searchParams.get("lat")
-    const lng = searchParams.get("lng")
-    const routeId = searchParams.get("route")
-
-    if (lat && lng) {
-      const position = {
-        lat: Number.parseFloat(lat),
-        lng: Number.parseFloat(lng),
-      }
-      // Center map on the specified location
-      map.panTo(position)
-      map.setZoom(15)
-      // Create a temporary marker
-      createTempMarker(position)
-    } else if (routeId) {
-      // Display the route
-      displayRoute(routeId)
-    }
-  }, [map, searchParams, createTempMarker, displayRoute])
-
-  // Load locations when map is ready and user is authenticated
-  useEffect(() => {
-    if (map && user) {
-      loadLocations()
-    }
-  }, [map, user, loadLocations])
-
-  const saveLocation = async () => {
-    if (!selectedLocation || !user) return
-
-    try {
-      // Save to Supabase
-      const { data, error } = await supabase
-        .from("locations")
-        .insert([
-          {
-            user_id: user.id,
-            name: locationName || "Unnamed location",
-            lat: selectedLocation.lat,
-            lng: selectedLocation.lng,
-            is_public: isPublic,
-          },
-        ])
-        .select()
-
-      if (error) throw error
-
-      const newLocation = data[0]
-
-      // Remove temporary marker
-      if (tempMarkerRef.current) {
-        tempMarkerRef.current.setMap(null)
-        tempMarkerRef.current = null
-      }
-
-      // Update local state
-      setMarkers((prev) => [...prev, newLocation])
-      setSelectedLocation(null)
-      setLocationName("")
-      toast({
-        title: "Location saved",
-        description: `${newLocation.name} has been saved ${isPublic ? "publicly" : "privately"}`,
-      })
-    } catch (error: any) {
-      toast({
-        title: "Error saving location",
-        description: error.message,
-        variant: "destructive",
-      })
-    }
-  }
-
-  const handleLocationUpdate = useCallback(
-    (position: { lat: number; lng: number }) => {
-      setOrigin(position)
-
-      // If the Save dialog is open, keep its coordinates in sync with live location updates
-      if (isSaveDialogOpen) {
-        setSelectedLocation({ lat: position.lat, lng: position.lng })
-        setSearchMarkerPosition(position)
-        if (map) {
-          map.panTo(position)
-        }
-      }
-
-      if (isNavigating && destination) {
-        // re-calc quietly to keep route fresh as user moves
-        // Note: calculateRoute is defined below but stable via useCallback; we avoid referencing it in deps to prevent hoist errors
-        // Instead, call through a ref-like pattern by relying on latest closure of travelMode/destination
-        // eslint-disable-next-line @typescript-eslint/no-use-before-define
-        calculateRoute(position, destination, travelMode, true)
-      }
-    },
-    // Keep dependencies minimal to avoid "used before declaration" while still updating when relevant state changes
-    [isSaveDialogOpen, map, isNavigating, destination, travelMode],
-  )
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      const target = event.target as Element
-      if (!target.closest(".relative")) {
-        setSuggestions([])
-      }
-    }
-    document.addEventListener("click", handleClickOutside)
-    return () => document.removeEventListener("click", handleClickOutside)
-  }, [])
-
   // Calculate and render route
   const calculateRoute = useCallback(
     (from: { lat: number; lng: number }, to: { lat: number; lng: number }, mode: typeof travelMode, silent = false) => {
-      if (!directionsServiceRef.current || !directionsRendererRef.current) return
+      if (!directionsServiceRef.current || !directionsRendererRef.current || !map) return
 
       directionsServiceRef.current.route(
         {
@@ -636,34 +563,30 @@ export function MapContainer() {
         (result: any, status: any) => {
           if (status === window.google.maps.DirectionsStatus.OK) {
             directionsRendererRef.current!.setDirections(result)
-            const leg = result.routes?.[0]?.legs?.[0]
-            if (leg) {
+            
+            const route = result.routes[0]
+            if (route) {
+              const leg = route.legs[0]
               setRouteInfo({
-                distanceText: leg.distance?.text ?? "",
-                durationText: leg.duration?.text ?? "",
+                distanceText: leg.distance.text,
+                durationText: leg.duration.text,
               })
-              if (!silent && map) {
-                // fit bounds to route
-                const bounds = new window.google.maps.LatLngBounds()
-                result.routes[0].overview_path.forEach((p: any) => bounds.extend(p))
-                map.fitBounds(bounds)
-              }
             }
           } else if (!silent) {
             toast({
-              title: "Directions error",
-              description: `Failed to get directions: ${status}`,
+              title: "Route calculation failed",
+              description: `Status: ${status}`,
               variant: "destructive",
             })
           }
-          // keep last result for saving if available
+          // Keep last result for saving if available
           if (result) {
             lastDirectionsResultRef.current = result
           }
         },
       )
     },
-    [map, toast],
+    [map, toast]
   )
 
   const startNavigation = useCallback(() => {
@@ -686,6 +609,112 @@ export function MapContainer() {
       directionsRendererRef.current.setDirections({ routes: [] })
     }
   }, [])
+
+  // Handle search input changes for Google Places autocomplete
+  const handleSearchChange = useCallback((value: string) => {
+    setSearchInput(value)
+    if (!value.trim() || !autocompleteService.current) {
+      setSuggestions([])
+      return
+    }
+
+    // Add a small delay to avoid too many API calls (debouncing)
+    const timeoutId = window.setTimeout(() => {
+      const request = {
+        input: value,
+        types: ["geocode", "establishment"],
+        componentRestrictions: undefined, // No country restriction
+      }
+      autocompleteService.current!.getPlacePredictions(request, (predictions: any, status: any) => {
+        if (status === window.google.maps.places.PlacesServiceStatus.OK) {
+          setSuggestions(predictions || [])
+        } else {
+          console.warn("Autocomplete predictions failed:", status)
+          setSuggestions([])
+        }
+      })
+    }, 300)
+
+    // Cleanup timeout on unmount or value change
+    return () => clearTimeout(timeoutId)
+  }, [autocompleteService])
+
+  // Handle place selection from autocomplete suggestions
+  const handlePlaceSelect = useCallback(async (prediction: any) => {
+    if (!placesService.current || !map) return
+
+    const request = {
+      placeId: prediction.place_id,
+      fields: ["geometry", "name", "formatted_address"],
+    }
+
+    placesService.current.getDetails(request, (place: any, status: any) => {
+      if (window.google && status === window.google.maps.places.PlacesServiceStatus.OK && place?.geometry?.location) {
+        const position = {
+          lat: place.geometry.location.lat(),
+          lng: place.geometry.location.lng(),
+        }
+
+        // Center map on selected place
+        map.panTo(position)
+        map.setZoom(15)
+
+        // Set as destination for navigation
+        setDestination(position)
+
+        // Create temporary marker
+        setSearchMarkerPosition(position)
+
+        // Clear search input and suggestions
+        setSearchInput(place.name || "")
+        setSuggestions([])
+
+        // Show toast with place info
+        toast({
+          title: place.name || "Location selected",
+          description: place.formatted_address || "Ready for navigation",
+        })
+
+        // Open save dialog if user is authenticated
+        if (isAuthenticated) {
+          setSelectedLocation(position)
+          setLocationName(place.name || "")
+          setIsSaveDialogOpen(true)
+        }
+      } else {
+        toast({
+          title: "Place details failed",
+          description: `Status: ${status}`,
+          variant: "destructive",
+        })
+      }
+    })
+  }, [placesService, map, toast, isAuthenticated])
+
+  // Handle live location updates from browser geolocation
+  const handleLocationUpdate = useCallback(
+    (position: { lat: number; lng: number }) => {
+      setOrigin(position)
+
+      // If the save dialog is open, keep its coordinates in sync with live location updates
+      if (isSaveDialogOpen) {
+        setSelectedLocation({ lat: position.lat, lng: position.lng })
+        setSearchMarkerPosition(position)
+        if (map) {
+          map.panTo(position)
+          map.setZoom(15)
+        }
+      }
+
+      // If navigating, recalculate route with updated position (silent to avoid toast spam)
+      if (isNavigating && destination) {
+        if (calculateRoute) {
+          calculateRoute(position, destination, travelMode, true)
+        }
+      }
+    },
+    [isSaveDialogOpen, map, isNavigating, destination, travelMode, calculateRoute]
+  )
 
   return (
     <div className="h-full relative" role="region" aria-label="Map container" aria-busy={isLoading}>
@@ -727,17 +756,15 @@ export function MapContainer() {
           </div>
           {/* Search Suggestions Dropdown */}
           {suggestions.length > 0 && (
-            <div className="absolute top-full left-0 right-0 mt-1 rounded-lg shadow-lg max-h-60 overflow-y-auto z-30 bg-white text-gray-900 border border-gray-300 dark:bg-neutral-900 dark:text-neutral-100 dark:border-neutral-700">
+            <div className="absolute top-full left-0 right-0 mt-1 bg-background border border-border rounded-md shadow-lg z-50 max-h-60 overflow-auto">
               {suggestions.map((suggestion) => (
                 <button
                   key={suggestion.place_id}
                   onClick={() => handlePlaceSelect(suggestion)}
-                  className="w-full px-4 py-3 text-left text-sm hover:bg-gray-50 focus:bg-gray-50 focus:outline-none border-b border-gray-100 last:border-b-0 dark:hover:bg-neutral-800 dark:focus:bg-neutral-800 dark:border-neutral-800"
+                  className="w-full text-left px-4 py-2 hover:bg-accent text-sm border-b border-border last:border-b-0"
                 >
-                  <div className="font-medium text-gray-900 dark:text-neutral-100">
-                    {suggestion.structured_formatting.main_text}
-                  </div>
-                  <div className="text-gray-500 dark:text-neutral-400 text-xs mt-1">
+                  <div className="font-medium">{suggestion.structured_formatting.main_text}</div>
+                  <div className="text-xs text-muted-foreground">
                     {suggestion.structured_formatting.secondary_text}
                   </div>
                 </button>
@@ -830,7 +857,9 @@ export function MapContainer() {
             style={{ lineHeight: 0 }}
             title="Add location"
           >
-            <span className="select-none" aria-hidden="true">+</span>
+            <span className="select-none" aria-hidden="true">
+              +
+            </span>
           </button>
         </div>
       </div>
@@ -841,17 +870,7 @@ export function MapContainer() {
       <LiveLocation
         map={map}
         isEnabled={isLocationEnabled}
-        onLocationUpdate={(pos) => {
-          // Always pass through to core handler
-          handleLocationUpdate(pos)
-
-          // If the save dialog is open and user explicitly clicks "My Location" to enable/update,
-          // ensure the dialog coordinates immediately reflect live location even after a prior search
-          if (isSaveDialogOpen) {
-            setSelectedLocation({ lat: pos.lat, lng: pos.lng })
-            setSearchMarkerPosition(pos)
-          }
-        }}
+        onLocationUpdate={handleLocationUpdate}
       />
 
       {/* Render saved location markers using SavedLocationMarker */}
@@ -874,9 +893,11 @@ export function MapContainer() {
                   <div>
                     <strong>${location.name}</strong><br/>
                     ${formatLocation(location.lat, location.lng)}<br/>
-                    <span style="color: ${location.is_public ? "#22c55e" : "#64748b"}">
-                      ${location.is_public ? "Public" : "Private"}
+                    <span style="color: ${location.visibility === 'public' ? '#22c55e' : location.visibility === 'followers' ? '#f59e0b' : '#64748b'}">
+                      ${location.visibility === 'public' ? 'Public' : location.visibility === 'followers' ? 'Followers' : 'Private'}
                     </span>
+                    ${location.users && location.user_id !== user?.id ? `<br/>
+                    <small>Shared by ${location.users.name}</small>` : ''}
                   </div>
                 `,
               })
@@ -902,9 +923,9 @@ export function MapContainer() {
       <LocationDialog
         open={isSaveDialogOpen}
         locationName={locationName}
-        isPublic={isPublic}
+        visibility={visibility}
         setLocationName={setLocationName}
-        setIsPublic={setIsPublic}
+        setVisibility={setVisibility}
         // Show current candidate coordinates in the dialog for editing
         lat={(selectedLocation ?? destination ?? searchMarkerPosition ?? origin)?.lat ?? null}
         lng={(selectedLocation ?? destination ?? searchMarkerPosition ?? origin)?.lng ?? null}
@@ -950,10 +971,15 @@ export function MapContainer() {
           }
           // Prefer user-edited selectedLocation if present
           const candidate = selectedLocation ?? destination ?? searchMarkerPosition ?? origin
-          if (!candidate || typeof candidate.lat !== 'number' || typeof candidate.lng !== 'number') {
-            toast({ title: "Invalid coordinates", description: "Please enter valid latitude and longitude.", variant: "destructive" })
+          if (!candidate || typeof candidate.lat !== "number" || typeof candidate.lng !== "number") {
+            toast({
+              title: "Invalid coordinates",
+              description: "Please enter valid latitude and longitude.",
+              variant: "destructive",
+            })
             return
           }
+          console.log("Saving location:", { user_id: user.id, name: locationName, lat: candidate.lat, lng: candidate.lng, visibility })
           try {
             const { data, error } = await supabase
               .from("locations")
@@ -963,7 +989,7 @@ export function MapContainer() {
                   name: locationName || "Saved location",
                   lat: candidate.lat,
                   lng: candidate.lng,
-                  is_public: isPublic,
+                  visibility: visibility,
                 },
               ])
               .select()
@@ -980,6 +1006,7 @@ export function MapContainer() {
             setSelectedLocation(null)
             setLocationName("")
           } catch (e: any) {
+            console.error("Error saving location:", e)
             toast({ title: "Failed to save location", description: e.message, variant: "destructive" })
           }
         }}

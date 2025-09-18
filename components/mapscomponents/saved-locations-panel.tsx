@@ -7,7 +7,7 @@ type Location = {
   name: string
   lat: number
   lng: number
-  is_public: boolean
+  visibility: 'public' | 'followers' | 'private'
   user_id: string
 }
 
@@ -29,7 +29,10 @@ export function SavedLocationsPanel({ markers, isLoading }: { markers: Location[
               {markers.map(marker => (
                 <li key={marker.id} className="text-sm flex items-center justify-between">
                   <span className="truncate">{marker.name}</span>
-                  <span className={`h-2 w-2 rounded-full ${marker.is_public ? "bg-green-500" : "bg-slate-500"}`}></span>
+                  <span className={`h-2 w-2 rounded-full ${
+                    marker.visibility === 'public' ? "bg-green-500" : 
+                    marker.visibility === 'followers' ? "bg-yellow-500" : "bg-slate-500"
+                  }`}></span>
                 </li>
               ))}
             </ul>
