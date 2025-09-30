@@ -6,15 +6,18 @@ import { useUser } from "@/hooks/use-user"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { MapPin, RouteIcon, Settings, Share2, Trash2, Users, UserPlus } from "lucide-react"
+import { MapPin, RouteIcon, Settings, Share2, Trash2, Users, UserPlus, Edit3 } from "lucide-react"
 import { supabase } from "@/lib/supabase"
 import { useToast } from "@/hooks/use-toast"
 import type { Tables } from "@/lib/supabase"
-
-// Import the format utility at the top of the file
 import { formatLocation } from "@/lib/format-coordinates"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Label } from "@/components/ui/label"
+import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
+import { LocationEditDialog } from "@/components/LocationEditDialog"
 
-type Location = Tables["locations"]
 type Route = Tables["routes"]
 
 export default function ProfilePage() {
@@ -137,6 +140,111 @@ export default function ProfilePage() {
     }
   }
 
+  const [editingLocation, setEditingLocation] = useState<Location | null>(null)
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
+
+  const updateLocation = async (locationId: string, updates: { name: string; url?: string; description?: string; visibility: 'public' | 'followers' | 'private' }) => {
+    try {
+      const { error } = await supabase
+        .from("locations")
+        .update(updates)
+        .eq("id", locationId)
+
+      if (error) throw error
+
+      // Update local state
+      setLocations(prev => prev.map(loc => 
+        loc.id === locationId 
+          ? { ...loc, ...updates }
+          : loc
+      ))
+
+      toast({
+        title: "Location updated",
+        description: "Your changes have been saved",
+      })
+    } catch (error: any) {
+      toast({
+        title: "Error updating location",
+        description: error.message,
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleEditLocation = (location: Location) => {
+    setEditingLocation(location)
+    setIsEditDialogOpen(true)
+  }
+
+  const handleSaveEdit = (updates: { name: string; url?: string; description?: string; visibility: 'public' | 'followers' | 'private' }) => {
+    if (editingLocation) {
+      updateLocation(editingLocation.id, updates)
+    }
+    setIsEditDialogOpen(false)
+    setEditingLocation(null)
+  }
+
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated) {
+      router.push("/login")
+    }
+  }, [isAuthenticated, router, isLoading])
+
+  useEffect(() => {
+    const fetchUserData = async () => {
+      if (!user) return
+
+      try {
+        setIsDataLoading(true)
+
+        // Fetch user's locations
+        const { data: locationData, error: locationError } = await supabase
+          .from("locations")
+          .select("*")
+          .eq("user_id", user.id)
+
+        if (locationError) throw locationError
+        setLocations(locationData || [])
+
+        // Fetch user's routes
+        const { data: routeData, error: routeError } = await supabase.from("routes").select("*").eq("user_id", user.id)
+
+        if (routeError) throw routeError
+        setRoutes(routeData || [])
+
+        // Fetch follower counts
+        const { count: followers, error: followersError } = await supabase
+          .from("followers")
+          .select("*", { count: "exact", head: true })
+          .eq("following_id", user.id)
+
+        if (followersError) throw followersError
+        setFollowersCount(followers || 0)
+
+        const { count: following, error: followingError } = await supabase
+          .from("followers")
+          .select("*", { count: "exact", head: true })
+          .eq("follower_id", user.id)
+
+        if (followingError) throw followingError
+        setFollowingCount(following || 0)
+      } catch (error: any) {
+        toast({
+          title: "Error loading profile data",
+          description: error.message,
+          variant: "destructive",
+        })
+      } finally {
+        setIsDataLoading(false)
+      }
+    }
+
+    if (user) {
+      fetchUserData()
+    }
+  }, [user, toast])
+
   if (isLoading || !isAuthenticated) {
     return null
   }
@@ -215,15 +323,27 @@ export default function ProfilePage() {
                   ) : (
                     <div className="grid gap-4">
                       {locations.map((location) => (
-                        <div key={location.id} className="flex items-center justify-between p-3 border rounded-lg">
-                          <div>
-                            <h4 className="font-medium">{location.name}</h4>
+                        <div key={location.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-accent">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1">
+                              <h4 className="font-medium">{location.name}</h4>
+                              {location.url && (
+                                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-800">
+                                  🔗 Link
+                                </span>
+                              )}
+                            </div>
                             <p className="text-sm text-muted-foreground">
                               {formatLocation(location.lat, location.lng)}
                             </p>
-                            <p className="text-xs text-muted-foreground capitalize">{location.visibility}</p>
+                            {location.url && (
+                              <p className="text-xs text-muted-foreground mt-1">
+                                Link: {location.url.startsWith('http') ? location.url.replace(/^https?:\/\//, '') : location.url}
+                              </p>
+                            )}
+                            <p className="text-xs text-muted-foreground capitalize mt-1">{location.visibility}</p>
                           </div>
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 ml-4">
                             <Button
                               variant="ghost"
                               size="sm"
@@ -234,11 +354,23 @@ export default function ProfilePage() {
                             >
                               <MapPin className="h-4 w-4" />
                             </Button>
+                            <Button 
+                              variant="ghost" 
+                              size="sm"
+                              onClick={() => handleEditLocation(location)}
+                            >
+                              <Edit3 className="h-4 w-4" />
+                            </Button>
                             <Button variant="ghost" size="sm">
                               <Share2 className="h-4 w-4" />
                             </Button>
-                            <Button variant="ghost" size="sm" onClick={() => deleteLocation(location.id)}>
-                              <Trash2 className="h-4 w-4 text-destructive" />
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              onClick={() => deleteLocation(location.id)}
+                              className="text-destructive hover:text-destructive"
+                            >
+                              <Trash2 className="h-4 w-4" />
                             </Button>
                           </div>
                         </div>
@@ -290,6 +422,16 @@ export default function ProfilePage() {
           </Tabs>
         </div>
       </div>
+
+      <LocationEditDialog
+        isOpen={isEditDialogOpen}
+        location={editingLocation}
+        onClose={() => {
+          setIsEditDialogOpen(false)
+          setEditingLocation(null)
+        }}
+        onSave={handleSaveEdit}
+      />
     </div>
   )
 }

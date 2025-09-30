@@ -65,6 +65,13 @@ UPDATE routes SET visibility = CASE WHEN is_public THEN 'public' ELSE 'private' 
 ALTER TABLE locations DROP COLUMN is_public;
 ALTER TABLE routes DROP COLUMN is_public;
 
+-- Add URL field to locations table for link functionality
+ALTER TABLE locations 
+ADD COLUMN IF NOT EXISTS url TEXT;
+
+-- Create index for faster queries on URL field
+CREATE INDEX IF NOT EXISTS idx_locations_url ON locations(url);
+
 -- Create RLS policies
 
 -- Users table policies
@@ -104,6 +111,24 @@ CREATE POLICY "Users can update their own locations"
 CREATE POLICY "Users can delete their own locations"
   ON locations FOR DELETE
   USING (auth.uid() = user_id);
+
+-- Add RLS policies for URL field access after the existing locations policies
+
+-- Ensure users can read URL for locations they have access to
+CREATE POLICY "Users can read URL for accessible locations"
+  ON locations FOR SELECT
+  USING (
+    visibility = 'public' OR
+    (visibility = 'followers' AND auth.uid() IN (SELECT follower_id FROM followers WHERE following_id = user_id)) OR
+    auth.uid() = user_id
+  )
+  WITH CHECK (true);
+
+-- Ensure users can write URL for their own locations
+CREATE POLICY "Users can write URL for their own locations"
+  ON locations FOR UPDATE
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
 
 -- Routes table policies
 ALTER TABLE routes ENABLE ROW LEVEL SECURITY;

@@ -28,6 +28,7 @@ type Location = {
   lng: number
   visibility: 'public' | 'followers' | 'private'
   user_id: string
+  url?: string | null
   users?: {
     id: string
     name: string
@@ -136,6 +137,7 @@ export function MapContainer() {
   const [selectedLocation, setSelectedLocation] = useState<{ lat: number; lng: number } | null>(null)
   const [visibility, setVisibility] = useState<"public" | "followers" | "private">("private")
   const [locationName, setLocationName] = useState("")
+  const [locationUrl, setLocationUrl] = useState("")
   const [isLoading, setIsLoading] = useState(true)
   const [isLocationEnabled, setIsLocationEnabled] = useState(false)
   // Explicit UI state to force-open dialog (start closed)
@@ -195,14 +197,17 @@ export function MapContainer() {
       
       if (followingError) {
         console.error("Error loading following list:", followingError)
-        throw followingError
+        // Don't throw if it's a permission error or empty result, just proceed with empty following
+        if (followingError.code !== 'PGRST116') { // 406 Not Acceptable - no rows
+          throw followingError
+        }
       }
 
       const followingIds = following?.map(f => f.following_id) || []
       console.log("Following IDs:", followingIds)
 
-      // Get all relevant locations in one query
-      const { data: allLocations, error: locationsError } = await supabase
+      // Build the OR filter for locations query
+      let query = supabase
         .from("locations")
         .select(`
           *,
@@ -212,13 +217,13 @@ export function MapContainer() {
             avatar_url
           )
         `)
-        .or(
-          `visibility.eq.public,user_id.eq.${user.id}${
-            followingIds.length > 0 
-              ? `,and(visibility.eq.followers,user_id.in.(${followingIds.join(",")}))`
-              : ""
-          }`
-        )
+        .or(`visibility.eq.public,user_id.eq.${user.id}`)
+
+      if (followingIds.length > 0) {
+        query = query.or(`and(visibility.eq.followers,user_id.in.(${followingIds.join(",")}))`)
+      }
+      
+      const { data: allLocations, error: locationsError } = await query
         .order("created_at", { ascending: false })
       
       if (locationsError) {
@@ -504,10 +509,19 @@ export function MapContainer() {
     lng: number
     name: string
     isPublic: boolean
+    url?: string
   }) => {
     if (!user) return
 
     try {
+      // Validate URL if provided
+      let validatedUrl = locationData.url ? locationData.url.trim() : null
+      if (validatedUrl) {
+        if (!validatedUrl.startsWith('http') && !validatedUrl.startsWith('/')) {
+          validatedUrl = 'https://' + validatedUrl
+        }
+      }
+      
       // Save to Supabase — use 'visibility' column (map uses visibility enum)
       const { data, error } = await supabase
         .from("locations")
@@ -518,9 +532,17 @@ export function MapContainer() {
             lat: locationData.lat,
             lng: locationData.lng,
             visibility: locationData.isPublic ? "public" : "private",
+            url: validatedUrl || null, // Ensure null instead of empty string
           },
         ])
-        .select()
+        .select(`
+          *,
+          users (
+            id,
+            name,
+            avatar_url
+          )
+        `)
 
       if (error) throw error
 
@@ -674,13 +696,6 @@ export function MapContainer() {
           title: place.name || "Location selected",
           description: place.formatted_address || "Ready for navigation",
         })
-
-        // Open save dialog if user is authenticated
-        if (isAuthenticated) {
-          setSelectedLocation(position)
-          setLocationName(place.name || "")
-          setIsSaveDialogOpen(true)
-        }
       } else {
         toast({
           title: "Place details failed",
@@ -716,8 +731,21 @@ export function MapContainer() {
     [isSaveDialogOpen, map, isNavigating, destination, travelMode, calculateRoute]
   )
 
+  const handleContainerClick = useCallback((e: React.MouseEvent) => {
+    // Clear suggestions when clicking outside the search input area
+    if (suggestions.length > 0) {
+      setSuggestions([])
+    }
+  }, [suggestions.length])
+
   return (
-    <div className="h-full relative" role="region" aria-label="Map container" aria-busy={isLoading}>
+    <div 
+      className="h-full relative" 
+      role="region" 
+      aria-label="Map container" 
+      aria-busy={isLoading}
+      onClick={handleContainerClick}
+    >
       {isLoading && (
         <div className="absolute inset-0 flex items-center justify-center bg-gray-100 z-10">
           <div className="text-center">
@@ -888,25 +916,88 @@ export function MapContainer() {
             // Create or get info window for this location
             let infoWindow = infoWindows.current.get(location.id)
             if (!infoWindow) {
+              const hasLink = location.url && location.url.trim() !== ""
+              let linkElement = ""
+              
+              if (hasLink) {
+                const url = location.url!
+                const isInternal = url.startsWith('/')
+                const displayText = isInternal ? 'View Details' : 'Visit Link'
+                const linkTarget = isInternal ? '' : 'target="_blank" rel="noopener noreferrer"'
+                
+                // Enhanced link display with description
+                const urlDisplay = isInternal 
+                  ? url 
+                  : url.replace(/^https?:\/\//, '').replace(/\/$/, '')
+                
+                linkElement = `
+                  <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #e5e7eb;">
+                    <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="color: #3b82f6;">
+                        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                      </svg>
+                      <span style="font-weight: 500; color: #374151; font-size: 0.875rem;">${displayText}</span>
+                    </div>
+                    <div style="font-size: 0.75rem; color: #6b7280; margin-bottom: 6px;">
+                      ${isInternal ? 'Internal page' : 'External website'}
+                    </div>
+                    <a href="${url}" ${linkTarget} 
+                       style="display: inline-block; color: #3b82f6; text-decoration: underline; font-size: 0.875rem; font-weight: 500; word-break: break-all; max-width: 100%; overflow: hidden; text-overflow: ellipsis;"
+                       onclick="if(window.ReactNativeWebView){window.ReactNativeWebView.postMessage('navigate:${url}'); return false;}">
+                      ${urlDisplay}
+                    </a>
+                  </div>
+                `
+              }
+              
               infoWindow = new window.google.maps.InfoWindow({
                 content: `
-                  <div>
-                    <strong>${location.name}</strong><br/>
-                    ${formatLocation(location.lat, location.lng)}<br/>
-                    <span style="color: ${location.visibility === 'public' ? '#22c55e' : location.visibility === 'followers' ? '#f59e0b' : '#64748b'}">
-                      ${location.visibility === 'public' ? 'Public' : location.visibility === 'followers' ? 'Followers' : 'Private'}
-                    </span>
-                    ${location.users && location.user_id !== user?.id ? `<br/>
-                    <small>Shared by ${location.users.name}</small>` : ''}
+                  <div style="min-width: 280px; max-width: 300px; padding: 16px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.4;">
+                    <div style="font-weight: 600; font-size: 1.125rem; margin-bottom: 8px; color: #1f2937;">
+                      ${location.name}
+                    </div>
+                    <div style="color: #6b7280; font-size: 0.875rem; margin-bottom: 12px; font-family: monospace;">
+                      ${formatLocation(location.lat, location.lng)}
+                    </div>
+                    
+                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px; padding: 8px; background-color: #f9fafb; border-radius: 6px;">
+                      <div style="width: 10px; height: 10px; border-radius: 50%; background-color: ${
+                        location.visibility === 'public' ? '#22c55e' : location.visibility === 'followers' ? '#f59e0b' : '#64748b'
+                      }; flex-shrink: 0;"></div>
+                      <div>
+                        <div style="font-size: 0.875rem; color: #374151; font-weight: 500;">
+                          ${location.visibility === 'public' ? 'Public' : location.visibility === 'followers' ? 'Followers Only' : 'Private'}
+                        </div>
+                        <div style="font-size: 0.75rem; color: #6b7280;">
+                          ${location.visibility === 'public' ? 'Visible to everyone' : 
+                            location.visibility === 'followers' ? 'Visible to your followers' : 'Only visible to you'}
+                        </div>
+                      </div>
+                    </div>
+                    
+                    ${linkElement}
+                    
+                    ${location.users && location.user_id !== user?.id ? `
+                      <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #e5e7eb; font-size: 0.875rem; color: #6b7280; display: flex; align-items: center; gap: 8px;">
+                        <div style="width: 24px; height: 24px; border-radius: 50%; background-image: url('${location.users?.avatar_url || ''}'); background-size: cover; background-color: #e5e7eb;"></div>
+                        <div>
+                          <div style="font-weight: 500; color: #374151;">Shared by ${location.users.name}</div>
+                          <div style="font-size: 0.75rem;">${location.visibility === 'public' ? 'Public location' : 'Shared with followers'}</div>
+                        </div>
+                      </div>
+                    ` : ''}
                   </div>
                 `,
               })
               infoWindows.current.set(location.id, infoWindow)
             }
+            
             if (map) {
               infoWindow.open(map)
               infoWindow.setPosition({ lat: location.lat, lng: location.lng })
             }
+            
             // Also allow quick navigate by setting destination when clicking a saved marker
             setDestination({ lat: location.lat, lng: location.lng })
             createTempMarker({ lat: location.lat, lng: location.lng })
@@ -923,8 +1014,10 @@ export function MapContainer() {
       <LocationDialog
         open={isSaveDialogOpen}
         locationName={locationName}
+        locationUrl={locationUrl}
         visibility={visibility}
         setLocationName={setLocationName}
+        setLocationUrl={setLocationUrl}
         setVisibility={setVisibility}
         // Show current candidate coordinates in the dialog for editing
         lat={(selectedLocation ?? destination ?? searchMarkerPosition ?? origin)?.lat ?? null}
@@ -963,12 +1056,15 @@ export function MapContainer() {
           setSelectedLocation(null)
           // do not clear destination/search marker; only close the UI
         }}
-        onSave={async () => {
+        onSave={async (validatedUrl: string | null) => {  // Receive URL directly
+          // No need to validate again since dialog already did it
+          
           if (!user) {
             toast({ title: "Login required", description: "Please login to save.", variant: "destructive" })
-            router.push("/login") // Redirect to login page
+            router.push("/login")
             return
           }
+          
           // Prefer user-edited selectedLocation if present
           const candidate = selectedLocation ?? destination ?? searchMarkerPosition ?? origin
           if (!candidate || typeof candidate.lat !== "number" || typeof candidate.lng !== "number") {
@@ -979,7 +1075,16 @@ export function MapContainer() {
             })
             return
           }
-          console.log("Saving location:", { user_id: user.id, name: locationName, lat: candidate.lat, lng: candidate.lng, visibility })
+          
+          console.log("Saving location:", { 
+            user_id: user.id, 
+            name: locationName, 
+            lat: candidate.lat, 
+            lng: candidate.lng, 
+            visibility,
+            url: validatedUrl // This will correctly pass null or the validated URL
+          })
+          
           try {
             const { data, error } = await supabase
               .from("locations")
@@ -990,21 +1095,35 @@ export function MapContainer() {
                   lat: candidate.lat,
                   lng: candidate.lng,
                   visibility: visibility,
+                  url: validatedUrl, // Will be null for empty strings
                 },
               ])
-              .select()
+              .select(`
+                *,
+                users (
+                  id,
+                  name,
+                  avatar_url
+                )
+              `)
+            
             if (error) throw error
+            
             const newLocation = data?.[0]
             if (newLocation) {
               setMarkers((prev) => [...prev, newLocation])
             }
+            
             toast({
               title: "Location saved",
-              description: `${locationName || "Saved location"} at ${formatLocation(candidate.lat, candidate.lng)}`,
+              description: `${locationName || "Saved location"} at ${formatLocation(candidate.lat, candidate.lng)} ${validatedUrl ? 'with link' : ''}`,
             })
+            
+            // Reset form
             setIsSaveDialogOpen(false)
             setSelectedLocation(null)
             setLocationName("")
+            setLocationUrl("")
           } catch (e: any) {
             console.error("Error saving location:", e)
             toast({ title: "Failed to save location", description: e.message, variant: "destructive" })

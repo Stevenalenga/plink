@@ -25,6 +25,7 @@ export type Tables = {
     lat: number
     lng: number
     visibility: 'public' | 'followers' | 'private'
+    url?: string | null  // Add this line for URL support
     created_at: string
     updated_at: string
   }
