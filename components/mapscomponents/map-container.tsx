@@ -12,6 +12,9 @@ import { Input } from "@/components/ui/input"
 import SearchMarker, { type SearchMarkerOptions } from "./markers/SearchMarker"
 import SavedLocationMarker from "./markers/SavedLocationMarker"
 import { LocationDialog } from "./location-dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
+import { UserSearchComponent } from "@/components/UserSearchComponent"
+import { Users } from "lucide-react"
 
 // Minimal global declarations to satisfy TS when Google Maps JS API loads at runtime
 declare global {
@@ -142,6 +145,7 @@ export function MapContainer() {
   const [isLocationEnabled, setIsLocationEnabled] = useState(false)
   // Explicit UI state to force-open dialog (start closed)
   const [isSaveDialogOpen, setIsSaveDialogOpen] = useState<boolean>(false)
+  const [isSearchDialogOpen, setIsSearchDialogOpen] = useState<boolean>(false)
   const { user, isAuthenticated } = useUser()
   const { toast } = useToast()
   const router = useRouter()
@@ -189,22 +193,46 @@ export function MapContainer() {
       setIsLoading(true)
       console.log("Loading locations for user:", user.id)
       
-      // First get the list of users being followed
-      const { data: following, error: followingError } = await supabase
-        .from('followers')
-        .select('following_id')
-        .eq('follower_id', user.id)
+      // Check if session is still valid and refresh if needed
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
       
-      if (followingError) {
-        console.error("Error loading following list:", followingError)
-        // Don't throw if it's a permission error or empty result, just proceed with empty following
-        if (followingError.code !== 'PGRST116') { // 406 Not Acceptable - no rows
-          throw followingError
+      if (sessionError || !session) {
+        console.error("Session invalid, attempting refresh...")
+        const { error: refreshError } = await supabase.auth.refreshSession()
+        
+        if (refreshError) {
+          console.error("Failed to refresh session:", refreshError)
+          toast({
+            title: "Session expired",
+            description: "Please log in again",
+            variant: "destructive",
+          })
+          router.push("/login")
+          return
         }
+        console.log("Session refreshed successfully")
       }
-
-      const followingIds = following?.map(f => f.following_id) || []
-      console.log("Following IDs:", followingIds)
+      
+      // First get the list of users being followed
+      // Note: This might fail if the followers table doesn't exist yet
+      let followingIds: string[] = [];
+      try {
+        const { data: following, error: followingError } = await supabase
+          .from('followers')
+          .select('following_id')
+          .eq('follower_id', user.id)
+        
+        if (followingError) {
+          console.error("Error loading following list:", followingError)
+          // Don't throw error, just continue with empty following list
+        } else {
+          followingIds = following?.map(f => f.following_id) || []
+          console.log("Following IDs:", followingIds)
+        }
+      } catch (followErr) {
+        console.error("Exception loading following list:", followErr)
+        // Continue with empty following list
+      }
 
       // Build the OR filter for locations query
       let query = supabase
@@ -217,18 +245,45 @@ export function MapContainer() {
             avatar_url
           )
         `)
-        .or(`visibility.eq.public,user_id.eq.${user.id}`)
-
-      if (followingIds.length > 0) {
-        query = query.or(`and(visibility.eq.followers,user_id.in.(${followingIds.join(",")}))`)
+      
+      // If no followers table exists yet or no following users, just get public locations and own locations
+      if (followingIds.length === 0) {
+        query = query.or(`visibility.eq.public,user_id.eq.${user.id}`)
+      } else {
+        // Include followers-only locations from people user follows
+        query = query.or(`visibility.eq.public,user_id.eq.${user.id},and(visibility.eq.followers,user_id.in.(${followingIds.join(",")}))`)
       }
       
       const { data: allLocations, error: locationsError } = await query
         .order("created_at", { ascending: false })
       
       if (locationsError) {
+        // Check if it's a JWT error
+        if (locationsError.code === 'PGRST301' || locationsError.code === 'PGRST303') {
+          console.error("JWT error detected, redirecting to login")
+          toast({
+            title: "Session expired",
+            description: "Please log in again",
+            variant: "destructive"
+          })
+          router.push("/login")
+          return
+        }
+        
         console.error("Error loading locations:", locationsError)
-        throw locationsError
+        console.error("Error details:", JSON.stringify(locationsError, null, 2))
+        console.error("Error message:", locationsError.message)
+        console.error("Error code:", locationsError.code)
+        console.error("Error hint:", locationsError.hint)
+        // Show toast but don't throw to prevent app crash
+        toast({
+          title: "Error loading locations",
+          description: locationsError.message || "Failed to load locations",
+          variant: "destructive"
+        })
+        // Return early rather than throwing
+        setIsLoading(false)
+        return
       }
 
       console.log("Loaded locations:", allLocations)
@@ -241,10 +296,12 @@ export function MapContainer() {
         description: error.message || "Failed to load locations",
         variant: "destructive",
       })
+      // Set empty markers to prevent UI from waiting for data
+      setMarkers([])
     } finally {
       setIsLoading(false)
     }
-  }, [toast, user])
+  }, [toast, user, router])
 
   // Function to create/update the temporary search marker position
   const createTempMarker = useCallback(
@@ -872,6 +929,25 @@ export function MapContainer() {
         <div className="pointer-events-auto">
           <LocationControl onToggle={setIsLocationEnabled} />
         </div>
+        
+        {/* Search Users Button */}
+        <div className="pointer-events-auto">
+          <button
+            aria-label="Search users"
+            onClick={() => setIsSearchDialogOpen(true)}
+            className="
+              h-12 w-12 rounded-full shadow-lg
+              bg-white dark:bg-neutral-800 text-primary
+              hover:bg-gray-100 dark:hover:bg-neutral-700
+              flex items-center justify-center
+              border border-border
+              transition-colors
+            "
+            title="Search users"
+          >
+            <Users className="h-5 w-5" />
+          </button>
+        </div>
 
         {/* Moved Add (+) next to My Location (stacked with small gap) */}
         <div className="pointer-events-auto">
@@ -933,6 +1009,7 @@ export function MapContainer() {
           id={location.id}
           position={{ lat: location.lat, lng: location.lng }}
           title={location.name}
+          visibility={location.visibility}
           onClick={() => {
             // Close all other info windows
             infoWindows.current.forEach((window) => window.close())
@@ -1155,6 +1232,21 @@ export function MapContainer() {
           }
         }}
       />
+
+      {/* Search Users Dialog */}
+      <Dialog open={isSearchDialogOpen} onOpenChange={setIsSearchDialogOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Search Users</DialogTitle>
+            <DialogDescription>
+              Find other users to connect with and view their shared locations
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <UserSearchComponent onClose={() => setIsSearchDialogOpen(false)} />
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

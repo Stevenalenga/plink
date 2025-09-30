@@ -8,16 +8,17 @@ type Props = {
   position: { lat: number; lng: number }
   title: string
   onClick?: () => void
+  visibility?: 'public' | 'followers' | 'private'  // Add visibility prop
 }
 
-export default function SavedLocationMarker({ map, id, position, title, onClick }: Props) {
+export default function SavedLocationMarker({ map, id, position, title, onClick, visibility = 'private' }: Props) {
   const markerRef = useRef<any | null>(null)
   const infoWindowRef = useRef<any | null>(null)
 
-  // Small colored dot icon; green if public would be handled by parent via different component/props if needed
+  // Build icon based on visibility
   const buildIcon = () => ({
     path: (window as any).google.maps.SymbolPath.CIRCLE,
-    fillColor: "#2563eb",
+    fillColor: visibility === 'public' ? "#22c55e" : visibility === 'followers' ? "#f59e0b" : "#2563eb",
     fillOpacity: 1,
     strokeWeight: 2,
     strokeColor: "#ffffff",
@@ -43,6 +44,7 @@ export default function SavedLocationMarker({ map, id, position, title, onClick 
     } else {
       markerRef.current.setPosition(position)
       markerRef.current.setTitle(title)
+      markerRef.current.setIcon(buildIcon())  // Update icon when visibility changes
       if (markerRef.current.getMap() !== map) {
         markerRef.current.setMap(map)
       }
@@ -64,7 +66,7 @@ export default function SavedLocationMarker({ map, id, position, title, onClick 
         infoWindowRef.current = null
       }
     }
-  }, [map, position.lat, position.lng, title])
+  }, [map, position.lat, position.lng, title, visibility])
 
   return null
 }
