@@ -421,11 +421,26 @@ export function MapContainer() {
           if (!event.latLng) return
 
           if (isAuthenticated) {
-            setSelectedLocation({
+            const clickedPosition = {
               lat: event.latLng.lat(),
               lng: event.latLng.lng(),
-            })
-            setIsSaveDialogOpen(true)
+            }
+            
+            console.log("Map clicked, opening dialog with position:", clickedPosition);
+            
+            // Set the search marker position to provide visual feedback
+            setSearchMarkerPosition(clickedPosition);
+            
+            // Set the selected location for the dialog
+            setSelectedLocation(clickedPosition);
+            
+            // Reset form fields before opening
+            setLocationName("");
+            setLocationUrl("");
+            setVisibility("private");
+            
+            // Force dialog to open
+            setIsSaveDialogOpen(true);
           } else {
             toast({
               title: "Login Required",
@@ -503,6 +518,12 @@ export function MapContainer() {
   useEffect(() => {
     console.log("Current markers:", markers)
   }, [markers])
+  
+  // Debug dialog state
+  useEffect(() => {
+    console.log("Dialog open state:", isSaveDialogOpen);
+    console.log("Selected location:", selectedLocation);
+  }, [isSaveDialogOpen, selectedLocation])
 
   const saveLocationFromCoordinates = async (locationData: {
     lat: number
@@ -857,21 +878,24 @@ export function MapContainer() {
           <button
             aria-label="Add location"
             onClick={() => {
-              const loc = destination ?? searchMarkerPosition ?? origin
+              console.log("Add location button clicked");
+              const loc = destination ?? searchMarkerPosition ?? origin;
               if (loc) {
-                setSelectedLocation({ lat: loc.lat, lng: loc.lng })
-                setIsSaveDialogOpen(true)
+                console.log("Using location:", loc);
+                setSelectedLocation({ lat: loc.lat, lng: loc.lng });
+                setIsSaveDialogOpen(true);
                 if (map) {
-                  map.panTo(loc)
-                  map.setZoom(15)
+                  map.panTo(loc);
+                  map.setZoom(15);
                 }
               } else {
-                setIsSaveDialogOpen(true)
+                console.log("No location available, opening empty dialog");
+                setIsSaveDialogOpen(true);
                 toast({
                   title: "No location selected",
                   description:
                     "Click on the map or search a place to choose a location. You can also enable live location.",
-                })
+                });
               }
             }}
             className="
@@ -1120,9 +1144,10 @@ export function MapContainer() {
             })
             
             // Reset form
-            setIsSaveDialogOpen(false)
-            setSelectedLocation(null)
-            setLocationName("")
+            console.log("Closing dialog after saving location");
+            setIsSaveDialogOpen(false);
+            setSelectedLocation(null);
+            setLocationName("");
             setLocationUrl("")
           } catch (e: any) {
             console.error("Error saving location:", e)

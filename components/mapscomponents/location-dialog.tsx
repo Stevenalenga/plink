@@ -31,7 +31,7 @@ export function LocationDialog({
   setLocationUrl?: (v: string) => void
   setVisibility: (v: "public" | "followers" | "private") => void
   onCancel: () => void
-  onSave: (validatedUrl: string | null) => void // Changed to receive URL parameter
+  onSave: (validatedUrl: string | null) => void
   lat?: number | null
   lng?: number | null
   setLat?: (v: number | null) => void
@@ -83,25 +83,31 @@ export function LocationDialog({
     }
   }, [locationUrl])
 
+  // Add logging to see when component renders
+  console.log("LocationDialog rendering, open state:", open);
+
   return (
     <Dialog
       open={open}
+      modal={true}
       onOpenChange={(next) => {
+        console.log("Dialog open state changing to:", next);
         // Only propagate close to parent; never force-open from inside
         if (!next) onCancel()
       }}
     >
-      <DialogContent className="sm:max-w-md bg-background text-foreground border border-border relative">
+      <DialogContent className="sm:max-w-md max-h-[80vh] overflow-y-auto bg-background text-foreground border border-border p-4 z-[2147483647] fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[90vw] md:w-auto shadow-xl">
         <DialogClose className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none z-50">
           <X className="h-4 w-4" />
           <span className="sr-only">Close</span>
         </DialogClose>
         
-        <DialogHeader>
+        <DialogHeader className="pb-2">
           <DialogTitle className="text-foreground">Add Location by Coordinates</DialogTitle>
         </DialogHeader>
-        <div className="grid gap-4 py-2">
-          <div className="grid gap-2">
+        
+        <div className="flex flex-col gap-3 py-2">
+          <div className="flex flex-col gap-1.5">
             <Label htmlFor="name" className="text-foreground">
               Location Name
             </Label>
@@ -116,11 +122,11 @@ export function LocationDialog({
           </div>
 
           {/* URL Section */}
-          <div className="grid gap-2">
+          <div className="flex flex-col gap-1.5">
             <Label htmlFor="url" className="text-foreground">
               Link (Optional)
             </Label>
-            <div className="text-xs text-muted-foreground mb-1">
+            <div className="text-xs text-muted-foreground">
               Add a link to a website, profile, or internal page
             </div>
             <Input
@@ -134,8 +140,8 @@ export function LocationDialog({
           </div>
 
           {/* Coordinates Section */}
-          <div className="grid gap-2">
-            <div className="grid gap-2">
+          <div className="flex flex-col gap-3 pt-1">
+            <div className="flex flex-col gap-1.5">
               <Label htmlFor="latitude" className="flex justify-between text-foreground">
                 <span>Latitude</span>
               </Label>
@@ -154,7 +160,7 @@ export function LocationDialog({
                 className="bg-background text-foreground placeholder:text-muted-foreground border-border"
               />
             </div>
-            <div className="grid gap-2">
+            <div className="flex flex-col gap-1.5">
               <Label htmlFor="longitude" className="flex justify-between text-foreground">
                 <span>Longitude</span>
               </Label>
@@ -175,7 +181,7 @@ export function LocationDialog({
             </div>
           </div>
 
-          <div className="flex items-center space-x-2">
+          <div className="flex flex-col gap-1.5 pt-1">
             <Label htmlFor="visibility" className="text-foreground">
               Visibility
             </Label>
@@ -183,15 +189,31 @@ export function LocationDialog({
               <SelectTrigger className="w-full">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent className="z-[2147483647]">
-                <SelectItem value="private">Private</SelectItem>
-                <SelectItem value="followers">Followers only</SelectItem>
-                <SelectItem value="public">Public</SelectItem>
+              <SelectContent position="popper" side="bottom" align="start" sideOffset={4} className="z-[2147483647] max-h-[40vh] overflow-y-auto">
+                <SelectItem value="private">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
+                    <span>Private (only you)</span>
+                  </div>
+                </SelectItem>
+                <SelectItem value="followers">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 bg-amber-500 rounded-full"></div>
+                    <span>Followers only</span>
+                  </div>
+                </SelectItem>
+                <SelectItem value="public">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                    <span>Public (everyone)</span>
+                  </div>
+                </SelectItem>
               </SelectContent>
             </Select>
           </div>
         </div>
-        <DialogFooter>
+        
+        <DialogFooter className="mt-6 flex justify-end gap-2 border-t pt-4">
           <Button
             variant="outline"
             onClick={onCancel}
@@ -200,8 +222,13 @@ export function LocationDialog({
           >
             Cancel
           </Button>
-          <Button onClick={handleSave} aria-label="Save Location" className="text-foreground">
-            Save
+          <Button 
+            onClick={handleSave} 
+            aria-label="Save Location" 
+            className="text-foreground"
+            disabled={!locationName.trim()}
+          >
+            Save Location
           </Button>
         </DialogFooter>
       </DialogContent>
