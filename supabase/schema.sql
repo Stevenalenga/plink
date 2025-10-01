@@ -77,9 +77,9 @@ CREATE INDEX IF NOT EXISTS idx_locations_url ON locations(url);
 -- Users table policies
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Users can view their own profile"
+CREATE POLICY "Users can view all user profiles"
   ON users FOR SELECT
-  USING (auth.uid() = id);
+  USING (true);
 
 CREATE POLICY "Users can update their own profile"
   ON users FOR UPDATE
