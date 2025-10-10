@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
@@ -22,17 +22,18 @@ export default function SignupPage() {
   const { toast } = useToast()
 
   // Redirect if already logged in
-  if (isAuthenticated) {
-    router.push("/")
-    return null
-  }
+  useEffect(() => {
+    if (isAuthenticated) {
+      router.push("/map")
+    }
+  }, [isAuthenticated, router])
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
     try {
       await signUp(email, password, name)
-      router.push("/")
+      router.push("/map")
     } catch (error) {
       // Error is handled in the signUp function
     } finally {
@@ -41,15 +42,28 @@ export default function SignupPage() {
   }
 
   return (
-    <div className="container flex items-center justify-center min-h-[calc(100vh-4rem)] py-8">
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <div className="mx-auto mb-4 h-12 w-12 rounded-full bg-primary flex items-center justify-center">
-            <MapPin className="h-6 w-6 text-primary-foreground" />
-          </div>
-          <CardTitle className="text-2xl">Create your MapSocial account</CardTitle>
-          <CardDescription>Sign up to get started</CardDescription>
-        </CardHeader>
+    <div className="container flex items-center justify-center min-h-screen py-8">
+      <div className="w-full max-w-md">
+        {/* Back to Home Button */}
+        <div className="mb-4">
+          <Link href="/landing">
+            <Button variant="ghost" size="sm" className="gap-2">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+              Back to Home
+            </Button>
+          </Link>
+        </div>
+
+        <Card className="w-full">
+          <CardHeader className="text-center">
+            <div className="mx-auto mb-4 h-12 w-12 rounded-full bg-primary flex items-center justify-center">
+              <MapPin className="h-6 w-6 text-primary-foreground" />
+            </div>
+            <CardTitle className="text-2xl">Create your MYMAPS account</CardTitle>
+            <CardDescription>Sign up to get started</CardDescription>
+          </CardHeader>
         <CardContent>
           <form onSubmit={handleSignup} className="space-y-4 mt-4">
             <div className="space-y-2">
@@ -109,7 +123,8 @@ export default function SignupPage() {
             .
           </p>
         </CardFooter>
-      </Card>
+        </Card>
+      </div>
     </div>
   )
 }

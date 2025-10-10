@@ -210,6 +210,21 @@ export function LocationDialog({
                 </SelectItem>
               </SelectContent>
             </Select>
+
+            {/* 24-hour expiration warning for public locations */}
+            {visibility === 'public' && (
+              <div className="flex items-start gap-2 p-3 mt-2 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-md">
+                <svg className="w-5 h-5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div className="text-sm">
+                  <p className="font-medium text-amber-900 dark:text-amber-100">24-Hour Expiration</p>
+                  <p className="text-amber-700 dark:text-amber-300 mt-1">
+                    Public locations are automatically deleted after 24 hours for privacy and security.
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
         </div>
         

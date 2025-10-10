@@ -30,10 +30,7 @@ export default function RootLayout({
       <body className={inter.className} suppressHydrationWarning>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
           <UserProvider>
-            <div className="flex flex-col min-h-screen">
-              <Header />
-              {children}
-            </div>
+            {children}
           </UserProvider>
         </ThemeProvider>
       </body>
