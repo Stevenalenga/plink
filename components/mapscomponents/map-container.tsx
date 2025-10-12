@@ -1186,6 +1186,9 @@ export function MapContainer() {
             url: validatedUrl // This will correctly pass null or the validated URL
           })
           
+          // Note: expires_at will be set automatically by the database trigger for public locations
+          // The trigger sets it to 24 hours by default, which is handled in the migration
+          
           try {
             const { data, error } = await supabase
               .from("locations")
@@ -1197,6 +1200,7 @@ export function MapContainer() {
                   lng: candidate.lng,
                   visibility: visibility,
                   url: validatedUrl, // Will be null for empty strings
+                  // expires_at is handled by database trigger based on visibility
                 },
               ])
               .select(`

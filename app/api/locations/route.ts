@@ -91,7 +91,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
     }
 
-    const { name, lat, lng, visibility = 'private' } = await request.json()
+    const { name, lat, lng, visibility = 'private', url, expires_at } = await request.json()
 
     if (!name || typeof lat !== 'number' || typeof lng !== 'number') {
       return NextResponse.json({ error: 'Invalid data' }, { status: 400 })
@@ -101,15 +101,28 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid visibility' }, { status: 400 })
     }
 
+    // Prepare location data
+    const locationData: any = {
+      user_id: user.id,
+      name,
+      lat,
+      lng,
+      visibility,
+    }
+
+    // Add optional fields
+    if (url !== undefined) {
+      locationData.url = url
+    }
+
+    // Handle expiration - database trigger will set default for public, but we respect user preference
+    if (expires_at !== undefined) {
+      locationData.expires_at = expires_at
+    }
+
     const { data, error } = await supabase
       .from('locations')
-      .insert({
-        user_id: user.id,
-        name,
-        lat,
-        lng,
-        visibility,
-      })
+      .insert(locationData)
       .select()
 
     if (error) throw error

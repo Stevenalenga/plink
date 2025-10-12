@@ -38,6 +38,8 @@ export function LocationDialog({
   setLng?: (v: number | null) => void
 }) {
   const [url, setUrl] = useState(locationUrl || "")
+  const [expirationOption, setExpirationOption] = useState<'24h' | 'never' | 'custom'>('24h')
+  const [customHours, setCustomHours] = useState<number>(24)
   const { toast } = useToast()
 
   const handleSave = () => {
@@ -211,17 +213,52 @@ export function LocationDialog({
               </SelectContent>
             </Select>
 
-            {/* 24-hour expiration warning for public locations */}
+            {/* Expiration settings - only show for public locations */}
             {visibility === 'public' && (
-              <div className="flex items-start gap-2 p-3 mt-2 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-md">
-                <svg className="w-5 h-5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <div className="text-sm">
-                  <p className="font-medium text-amber-900 dark:text-amber-100">24-Hour Expiration</p>
-                  <p className="text-amber-700 dark:text-amber-300 mt-1">
-                    Public locations are automatically deleted after 24 hours for privacy and security.
-                  </p>
+              <div className="flex flex-col gap-2 mt-2">
+                <Label htmlFor="expiration" className="text-foreground">
+                  Auto-Delete After
+                </Label>
+                <Select value={expirationOption} onValueChange={(v) => setExpirationOption(v as any)}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent position="popper" side="bottom" align="start" sideOffset={4} className="z-[2147483647]">
+                    <SelectItem value="24h">24 hours (Recommended)</SelectItem>
+                    <SelectItem value="custom">Custom duration</SelectItem>
+                    <SelectItem value="never">Never expire</SelectItem>
+                  </SelectContent>
+                </Select>
+                
+                {expirationOption === 'custom' && (
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="number"
+                      min="1"
+                      max="720"
+                      value={customHours}
+                      onChange={(e) => setCustomHours(Math.max(1, parseInt(e.target.value) || 1))}
+                      className="w-24 bg-background text-foreground border-border"
+                    />
+                    <span className="text-sm text-muted-foreground">hours</span>
+                  </div>
+                )}
+                
+                <div className="flex items-start gap-2 p-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-md">
+                  <svg className="w-5 h-5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <div className="text-sm">
+                    <p className="font-medium text-amber-900 dark:text-amber-100">Privacy Notice</p>
+                    <p className="text-amber-700 dark:text-amber-300 mt-1">
+                      {expirationOption === 'never' 
+                        ? 'Public locations without expiration will remain visible indefinitely. Consider setting an expiration for better privacy.'
+                        : expirationOption === '24h'
+                        ? 'Location will be automatically deleted after 24 hours for privacy and security.'
+                        : `Location will be automatically deleted after ${customHours} hour${customHours !== 1 ? 's' : ''}.`
+                      }
+                    </p>
+                  </div>
                 </div>
               </div>
             )}

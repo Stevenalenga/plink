@@ -21,15 +21,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Calculate the cutoff time (24 hours ago)
-    const cutoffTime = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+    // Get current time for comparison
+    const now = new Date().toISOString()
 
-    // Delete public locations older than 24 hours
+    // Delete locations that have passed their expiration time
     const { data, error } = await supabase
       .from('locations')
       .delete()
-      .eq('visibility', 'public')
-      .lt('created_at', cutoffTime)
+      .not('expires_at', 'is', null)
+      .lt('expires_at', now)
       .select()
 
     if (error) {
@@ -39,13 +39,13 @@ export async function POST(request: NextRequest) {
 
     const deletedCount = data?.length || 0
     
-    console.log(`✅ Cleanup completed: Deleted ${deletedCount} expired public locations`)
+    console.log(`✅ Cleanup completed: Deleted ${deletedCount} expired locations`)
 
     return NextResponse.json({ 
       success: true, 
       deleted: deletedCount,
-      cutoffTime,
-      message: `Deleted ${deletedCount} expired public location${deletedCount !== 1 ? 's' : ''}`,
+      checkedAt: now,
+      message: `Deleted ${deletedCount} expired location${deletedCount !== 1 ? 's' : ''}`,
       timestamp: new Date().toISOString()
     })
   } catch (error: any) {
@@ -71,30 +71,39 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const cutoffTime = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+    const now = new Date().toISOString()
 
-    // Count expired locations
+    // Count expired locations (those with expires_at in the past)
     const { count: expiredCount, error: expiredError } = await supabase
       .from('locations')
       .select('*', { count: 'exact', head: true })
-      .eq('visibility', 'public')
-      .lt('created_at', cutoffTime)
+      .not('expires_at', 'is', null)
+      .lt('expires_at', now)
 
     if (expiredError) throw expiredError
 
-    // Count active public locations
-    const { count: activeCount, error: activeError } = await supabase
+    // Count locations with expiration set (not yet expired)
+    const { count: activeWithExpiration, error: activeError } = await supabase
       .from('locations')
       .select('*', { count: 'exact', head: true })
-      .eq('visibility', 'public')
-      .gte('created_at', cutoffTime)
+      .not('expires_at', 'is', null)
+      .gte('expires_at', now)
 
     if (activeError) throw activeError
 
+    // Count total public locations
+    const { count: publicCount, error: publicError } = await supabase
+      .from('locations')
+      .select('*', { count: 'exact', head: true })
+      .eq('visibility', 'public')
+
+    if (publicError) throw publicError
+
     return NextResponse.json({
       expiredLocations: expiredCount || 0,
-      activePublicLocations: activeCount || 0,
-      cutoffTime,
+      activeLocationsWithExpiration: activeWithExpiration || 0,
+      totalPublicLocations: publicCount || 0,
+      checkedAt: now,
       message: `${expiredCount || 0} location(s) eligible for deletion`,
       timestamp: new Date().toISOString()
     })

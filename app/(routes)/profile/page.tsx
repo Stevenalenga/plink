@@ -19,6 +19,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { LocationEditDialog } from "@/components/LocationEditDialog"
 
 type Route = Tables["routes"]
+type Location = Tables["locations"]
 
 export default function ProfilePage() {
   const { user, isAuthenticated, signOut, isLoading } = useUser()
@@ -143,7 +144,7 @@ export default function ProfilePage() {
   const [editingLocation, setEditingLocation] = useState<Location | null>(null)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
 
-  const updateLocation = async (locationId: string, updates: { name: string; url?: string; description?: string; visibility: 'public' | 'followers' | 'private' }) => {
+  const updateLocation = async (locationId: string, updates: { name: string; url?: string; description?: string; visibility: 'public' | 'followers' | 'private'; expires_at?: string | null }) => {
     try {
       const { error } = await supabase
         .from("locations")
@@ -177,7 +178,7 @@ export default function ProfilePage() {
     setIsEditDialogOpen(true)
   }
 
-  const handleSaveEdit = (updates: { name: string; url?: string; description?: string; visibility: 'public' | 'followers' | 'private' }) => {
+  const handleSaveEdit = (updates: { name: string; url?: string; description?: string; visibility: 'public' | 'followers' | 'private'; expires_at?: string | null }) => {
     if (editingLocation) {
       updateLocation(editingLocation.id, updates)
     }
@@ -332,6 +333,19 @@ export default function ProfilePage() {
                                   🔗 Link
                                 </span>
                               )}
+                              {(location as any).expires_at && (
+                                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200">
+                                  ⏱️ {(() => {
+                                    const expiresAt = new Date((location as any).expires_at)
+                                    const now = new Date()
+                                    const hoursLeft = Math.max(0, Math.floor((expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60)))
+                                    const minutesLeft = Math.max(0, Math.floor(((expiresAt.getTime() - now.getTime()) % (1000 * 60 * 60)) / (1000 * 60)))
+                                    if (hoursLeft > 0) return `${hoursLeft}h ${minutesLeft}m left`
+                                    if (minutesLeft > 0) return `${minutesLeft}m left`
+                                    return 'Expiring soon'
+                                  })()}
+                                </span>
+                              )}
                             </div>
                             <p className="text-sm text-muted-foreground">
                               {formatLocation(location.lat, location.lng)}
@@ -341,7 +355,14 @@ export default function ProfilePage() {
                                 Link: {location.url.startsWith('http') ? location.url.replace(/^https?:\/\//, '') : location.url}
                               </p>
                             )}
-                            <p className="text-xs text-muted-foreground capitalize mt-1">{location.visibility}</p>
+                            <div className="flex items-center gap-2 mt-1">
+                              <p className="text-xs text-muted-foreground capitalize">{location.visibility}</p>
+                              {(location as any).expires_at && (
+                                <p className="text-xs text-muted-foreground">
+                                  • Expires {new Date((location as any).expires_at).toLocaleString()}
+                                </p>
+                              )}
+                            </div>
                           </div>
                           <div className="flex items-center gap-2 ml-4">
                             <Button

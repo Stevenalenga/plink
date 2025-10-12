@@ -72,6 +72,13 @@ ADD COLUMN IF NOT EXISTS url TEXT;
 -- Create index for faster queries on URL field
 CREATE INDEX IF NOT EXISTS idx_locations_url ON locations(url);
 
+-- Add expires_at column for automatic deletion after 24 hours
+ALTER TABLE locations 
+ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP WITH TIME ZONE;
+
+-- Create index for faster queries on expires_at field (used by cleanup job)
+CREATE INDEX IF NOT EXISTS idx_locations_expires_at ON locations(expires_at) WHERE expires_at IS NOT NULL;
+
 -- Create RLS policies
 
 -- Users table policies
