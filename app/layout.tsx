@@ -9,11 +9,15 @@ import { NEXT_PUBLIC_GOOGLE_MAPS_API_KEY } from "@/app/env"
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata = {
-  title: "MapSocial - Share and discover locations",
-  description: "A social platform for sharing and discovering locations and routes",
+  title: "MYMAPS - Share and discover locations",
+  description: "A social platform for sharing and discovering locations and routes with friends and followers",
   generator: 'v0.dev',
   icons: {
-    icon: '/favicon.ico',
+    icon: [
+      { url: '/favicon.svg', type: 'image/svg+xml' },
+      { url: '/icon.tsx', sizes: '32x32' },
+    ],
+    apple: '/apple-icon.tsx',
   },
 }
 
@@ -25,7 +29,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        <link rel="icon" href="/favicon.ico" sizes="any" />
+        <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
       </head>
       <body className={inter.className} suppressHydrationWarning>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
