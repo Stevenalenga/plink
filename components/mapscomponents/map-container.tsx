@@ -1157,7 +1157,7 @@ export function MapContainer() {
           setSelectedLocation(null)
           // do not clear destination/search marker; only close the UI
         }}
-        onSave={async (validatedUrl: string | null) => {  // Receive URL directly
+        onSave={async (validatedUrl: string | null, expiresAt?: string | null, selectedFollowers?: string[]) => {  // Receive URL, expires_at, and selectedFollowers
           // No need to validate again since dialog already did it
           
           if (!user) {
@@ -1183,38 +1183,47 @@ export function MapContainer() {
             lat: candidate.lat, 
             lng: candidate.lng, 
             visibility,
-            url: validatedUrl // This will correctly pass null or the validated URL
+            url: validatedUrl, // This will correctly pass null or the validated URL
+            expires_at: expiresAt, // Pass expiration timestamp
+            selectedFollowers // Pass selected followers
           })
           
           // Note: expires_at will be set automatically by the database trigger for public locations
           // The trigger sets it to 24 hours by default, which is handled in the migration
           
           try {
-            const { data, error } = await supabase
-              .from("locations")
-              .insert([
-                {
-                  user_id: user.id,
-                  name: locationName || "Saved location",
-                  lat: candidate.lat,
-                  lng: candidate.lng,
-                  visibility: visibility,
-                  url: validatedUrl, // Will be null for empty strings
-                  // expires_at is handled by database trigger based on visibility
-                },
-              ])
-              .select(`
-                *,
-                users (
-                  id,
-                  name,
-                  avatar_url
-                )
-              `)
+            // Use API endpoint to properly handle selective follower sharing
+            const session = await supabase.auth.getSession()
+            const token = session.data.session?.access_token
+
+            if (!token) {
+              throw new Error('Not authenticated')
+            }
+
+            const response = await fetch('/api/locations', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`,
+              },
+              body: JSON.stringify({
+                name: locationName || "Saved location",
+                lat: candidate.lat,
+                lng: candidate.lng,
+                visibility: visibility,
+                url: validatedUrl,
+                expires_at: expiresAt,
+                selectedFollowers: selectedFollowers,
+              }),
+            })
+
+            if (!response.ok) {
+              const error = await response.json()
+              throw new Error(error.message || 'Failed to save location')
+            }
+
+            const newLocation = await response.json()
             
-            if (error) throw error
-            
-            const newLocation = data?.[0]
             if (newLocation) {
               setMarkers((prev) => [...prev, newLocation])
             }

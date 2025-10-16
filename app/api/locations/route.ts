@@ -58,7 +58,9 @@ export async function GET(request: NextRequest) {
         .eq('follower_id', user.id)
         .eq('following_id', userId)
 
-      if (followData && followData.length > 0) {
+      const isFollowing = followData && followData.length > 0
+
+      if (isFollowing) {
         // Following, can see public and followers
         query = query.in('visibility', ['public', 'followers'])
       } else {
@@ -71,7 +73,47 @@ export async function GET(request: NextRequest) {
     const { data, error } = await query
     if (error) throw error
 
-    return NextResponse.json(data)
+    let filteredData = data || []
+    
+    // Filter locations with selective follower sharing
+    if (userId && userId !== user.id) {
+      // Check if any followers-only locations have selective sharing
+      const followersLocations = filteredData.filter(loc => loc.visibility === 'followers')
+      
+      if (followersLocations.length > 0) {
+        const locationIds = followersLocations.map(loc => loc.id)
+        
+        // Check which locations have selective sharing
+        const { data: locationFollowers } = await supabase
+          .from('location_followers')
+          .select('location_id')
+          .in('location_id', locationIds)
+        
+        const locationsWithSelectiveSharing = new Set(
+          locationFollowers?.map(lf => lf.location_id) || []
+        )
+        
+        // Check which locations the current user has access to
+        const { data: userAccess } = await supabase
+          .from('location_followers')
+          .select('location_id')
+          .in('location_id', locationIds)
+          .eq('follower_id', user.id)
+        
+        const accessibleLocationIds = new Set(
+          userAccess?.map(ua => ua.location_id) || []
+        )
+        
+        // Filter: keep locations without selective sharing OR with explicit access
+        filteredData = filteredData.filter(loc => {
+          if (loc.visibility !== 'followers') return true
+          if (!locationsWithSelectiveSharing.has(loc.id)) return true
+          return accessibleLocationIds.has(loc.id)
+        })
+      }
+    }
+
+    return NextResponse.json(filteredData)
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
@@ -91,7 +133,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
     }
 
-    const { name, lat, lng, visibility = 'private', url, expires_at } = await request.json()
+    const { name, lat, lng, visibility = 'private', url, expires_at, selectedFollowers } = await request.json()
 
     if (!name || typeof lat !== 'number' || typeof lng !== 'number') {
       return NextResponse.json({ error: 'Invalid data' }, { status: 400 })
@@ -115,7 +157,7 @@ export async function POST(request: NextRequest) {
       locationData.url = url
     }
 
-    // Handle expiration - database trigger will set default for public, but we respect user preference
+    // Handle expiration for ALL visibility types (user-controlled)
     if (expires_at !== undefined) {
       locationData.expires_at = expires_at
     }
@@ -127,7 +169,26 @@ export async function POST(request: NextRequest) {
 
     if (error) throw error
 
-    return NextResponse.json(data[0])
+    const newLocation = data[0]
+
+    // If selective followers are specified, add them to location_followers table
+    if (visibility === 'followers' && selectedFollowers && Array.isArray(selectedFollowers) && selectedFollowers.length > 0) {
+      const locationFollowersData = selectedFollowers.map(followerId => ({
+        location_id: newLocation.id,
+        follower_id: followerId,
+      }))
+
+      const { error: lfError } = await supabase
+        .from('location_followers')
+        .insert(locationFollowersData)
+
+      if (lfError) {
+        console.error('Error adding location followers:', lfError)
+        // Don't throw - location was created successfully
+      }
+    }
+
+    return NextResponse.json(newLocation)
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }

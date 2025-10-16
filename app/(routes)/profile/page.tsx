@@ -18,6 +18,7 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { LocationEditDialog } from "@/components/LocationEditDialog"
 
+type Location = Tables["locations"]
 type Route = Tables["routes"]
 type Location = Tables["locations"]
 
@@ -144,19 +145,34 @@ export default function ProfilePage() {
   const [editingLocation, setEditingLocation] = useState<Location | null>(null)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
 
-  const updateLocation = async (locationId: string, updates: { name: string; url?: string; description?: string; visibility: 'public' | 'followers' | 'private'; expires_at?: string | null }) => {
+  const updateLocation = async (locationId: string, updates: { name: string; url?: string; description?: string; visibility: 'public' | 'followers' | 'private'; expires_at?: string | null; selectedFollowers?: string[] }) => {
     try {
-      const { error } = await supabase
-        .from("locations")
-        .update(updates)
-        .eq("id", locationId)
+      // Use API endpoint to handle both location and followers updates
+      const session = await supabase.auth.getSession()
+      const token = session.data.session?.access_token
 
-      if (error) throw error
+      if (!token) throw new Error('Not authenticated')
+
+      const response = await fetch(`/api/locations/${locationId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(updates),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.message || 'Failed to update location')
+      }
+
+      const updatedLocation = await response.json()
 
       // Update local state
       setLocations(prev => prev.map(loc => 
         loc.id === locationId 
-          ? { ...loc, ...updates }
+          ? { ...loc, ...updatedLocation }
           : loc
       ))
 
@@ -178,7 +194,7 @@ export default function ProfilePage() {
     setIsEditDialogOpen(true)
   }
 
-  const handleSaveEdit = (updates: { name: string; url?: string; description?: string; visibility: 'public' | 'followers' | 'private'; expires_at?: string | null }) => {
+  const handleSaveEdit = (updates: { name: string; url?: string; description?: string; visibility: 'public' | 'followers' | 'private'; expires_at?: string | null; selectedFollowers?: string[] }) => {
     if (editingLocation) {
       updateLocation(editingLocation.id, updates)
     }
@@ -329,19 +345,22 @@ export default function ProfilePage() {
                             <div className="flex items-center gap-2 mb-1">
                               <h4 className="font-medium">{location.name}</h4>
                               {location.url && (
-                                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-800">
+                                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
                                   🔗 Link
                                 </span>
                               )}
+                              {/* Show expiration badge for ALL locations with expires_at */}
                               {(location as any).expires_at && (
-                                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200">
+                                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200">
                                   ⏱️ {(() => {
                                     const expiresAt = new Date((location as any).expires_at)
                                     const now = new Date()
-                                    const hoursLeft = Math.max(0, Math.floor((expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60)))
-                                    const minutesLeft = Math.max(0, Math.floor(((expiresAt.getTime() - now.getTime()) % (1000 * 60 * 60)) / (1000 * 60)))
-                                    if (hoursLeft > 0) return `${hoursLeft}h ${minutesLeft}m left`
-                                    if (minutesLeft > 0) return `${minutesLeft}m left`
+                                    const diffMs = expiresAt.getTime() - now.getTime()
+                                    const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
+                                    const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60))
+                                    
+                                    if (diffHours > 0) return `${diffHours}h ${diffMinutes}m left`
+                                    if (diffMinutes > 0) return `${diffMinutes}m left`
                                     return 'Expiring soon'
                                   })()}
                                 </span>
