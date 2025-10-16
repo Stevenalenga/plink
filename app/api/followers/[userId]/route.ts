@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 
@@ -8,7 +7,7 @@ export async function GET(
   { params }: { params: { userId: string } }
 ) {
   try {
-    const cookieStore = cookies()
+    const cookieStore = await cookies()
     const supabaseServer = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -35,7 +34,7 @@ export async function GET(
 
     let query
     if (type === 'followers') {
-      query = supabase
+      query = supabaseServer
         .from('followers')
         .select(`
           id,
@@ -50,7 +49,7 @@ export async function GET(
         `)
         .eq('following_id', params.userId)
     } else {
-      query = supabase
+      query = supabaseServer
         .from('followers')
         .select(`
           id,
@@ -80,7 +79,7 @@ export async function DELETE(
   { params }: { params: { userId: string } }
 ) {
   try {
-    const cookieStore = cookies()
+    const cookieStore = await cookies()
     const supabaseServer = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -98,7 +97,7 @@ export async function DELETE(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await supabaseServer
       .from('followers')
       .delete()
       .eq('follower_id', user.id)

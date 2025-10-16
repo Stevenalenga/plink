@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { createServerSupabaseClient } from '@/lib/supabase-server'
 
 /**
  * API Route to delete expired public locations (older than 24 hours)
@@ -23,6 +23,9 @@ export async function POST(request: NextRequest) {
 
     // Get current time for comparison
     const now = new Date().toISOString()
+
+    // Create server client for admin operations
+    const supabase = createServerSupabaseClient()
 
     // Delete locations that have passed their expiration time
     const { data, error } = await supabase
@@ -72,6 +75,9 @@ export async function GET(request: NextRequest) {
     }
 
     const now = new Date().toISOString()
+
+    // Create server client for admin operations
+    const supabase = createServerSupabaseClient()
 
     // Count expired locations (those with expires_at in the past)
     const { count: expiredCount, error: expiredError } = await supabase

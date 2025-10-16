@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { createServerSupabaseClient } from '@/lib/supabase-server'
 
 export async function GET(request: NextRequest) {
   try {
     const authHeader = request.headers.get('authorization')
     if (!authHeader) {
       // Anonymous user - only public locations
+      const supabase = createServerSupabaseClient()
       const { data, error } = await supabase
         .from('locations')
         .select(`
@@ -23,8 +24,8 @@ export async function GET(request: NextRequest) {
     }
 
     // For authenticated users, we need to set the auth context
-    // This is simplified - in production, you'd validate the JWT
     const token = authHeader.replace('Bearer ', '')
+    const supabase = createServerSupabaseClient(token)
     const { data: { user }, error: userError } = await supabase.auth.getUser(token)
 
     if (userError || !user) {
@@ -127,6 +128,7 @@ export async function POST(request: NextRequest) {
     }
 
     const token = authHeader.replace('Bearer ', '')
+    const supabase = createServerSupabaseClient(token)
     const { data: { user }, error: userError } = await supabase.auth.getUser(token)
 
     if (userError || !user) {

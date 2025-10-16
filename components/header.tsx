@@ -16,16 +16,16 @@ export function Header() {
     <header className="border-b">
       <div className="container flex h-16 items-center justify-between">
         <div className="flex items-center gap-2">
-          <Link href="/" className="flex items-center gap-2">
+          <Link href="/map" className="flex items-center gap-2">
             <MapPin className="h-6 w-6 text-primary" />
             <span className="text-xl font-bold">MapSocial</span>
           </Link>
         </div>
         <nav className="hidden md:flex items-center gap-6">
           <Link
-            href="/"
+            href="/map"
             className={`text-sm font-medium transition-colors ${
-              pathname === "/" ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+              pathname === "/map" ? "text-foreground" : "text-muted-foreground hover:text-foreground"
             }`}
           >
             Map

@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 
 export async function GET(request: NextRequest) {
   try {
-    const cookieStore = cookies()
+    const cookieStore = await cookies()
     const supabaseServer = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
 
     let query
     if (type === 'followers') {
-      query = supabase
+      query = supabaseServer
         .from('followers')
         .select(`
           id,
@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
         `)
         .eq('following_id', user.id)
     } else {
-      query = supabase
+      query = supabaseServer
         .from('followers')
         .select(`
           id,
@@ -74,7 +74,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const cookieStore = cookies()
+    const cookieStore = await cookies()
     const supabaseServer = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -101,7 +101,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Cannot follow yourself' }, { status: 400 })
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await supabaseServer
       .from('followers')
       .insert({
         follower_id: user.id,

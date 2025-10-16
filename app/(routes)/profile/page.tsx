@@ -20,7 +20,6 @@ import { LocationEditDialog } from "@/components/LocationEditDialog"
 
 type Location = Tables["locations"]
 type Route = Tables["routes"]
-type Location = Tables["locations"]
 
 export default function ProfilePage() {
   const { user, isAuthenticated, signOut, isLoading } = useUser()
@@ -389,7 +388,7 @@ export default function ProfilePage() {
                               size="sm"
                               onClick={() => {
                                 // Center map on this location
-                                router.push(`/?lat=${location.lat}&lng=${location.lng}`)
+                                router.push(`/map?lat=${location.lat}&lng=${location.lng}`)
                               }}
                             >
                               <MapPin className="h-4 w-4" />

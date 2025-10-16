@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { createServerSupabaseClient } from '@/lib/supabase-server'
 
 export async function PATCH(
   request: NextRequest,
@@ -12,6 +12,7 @@ export async function PATCH(
     }
 
     const token = authHeader.replace('Bearer ', '')
+    const supabase = createServerSupabaseClient(token)
     const { data: { user }, error: userError } = await supabase.auth.getUser(token)
 
     if (userError || !user) {
