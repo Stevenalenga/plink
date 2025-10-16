@@ -223,14 +223,17 @@ export function MapContainer() {
           .eq('follower_id', user.id)
         
         if (followingError) {
-          console.error("Error loading following list:", followingError)
+          // Only log if it's not a "relation does not exist" error
+          if (followingError.code !== '42P01') {
+            console.warn("Error loading following list:", followingError.message)
+          }
           // Don't throw error, just continue with empty following list
         } else {
           followingIds = following?.map(f => f.following_id) || []
           console.log("Following IDs:", followingIds)
         }
       } catch (followErr) {
-        console.error("Exception loading following list:", followErr)
+        console.warn("Exception loading following list, continuing without followers")
         // Continue with empty following list
       }
 
@@ -258,30 +261,60 @@ export function MapContainer() {
         .order("created_at", { ascending: false })
       
       if (locationsError) {
-        // Check if it's a JWT error
-        if (locationsError.code === 'PGRST301' || locationsError.code === 'PGRST303') {
-          console.error("JWT error detected, redirecting to login")
-          toast({
-            title: "Session expired",
-            description: "Please log in again",
-            variant: "destructive"
-          })
-          router.push("/login")
+        console.error("Error loading locations:", {
+          code: locationsError.code,
+          message: locationsError.message,
+          details: locationsError.details,
+          hint: locationsError.hint
+        })
+        
+        // Check if it's a JWT/authentication error
+        if (locationsError.code === 'PGRST301' || locationsError.code === 'PGRST303' || locationsError.message?.includes('JWT')) {
+          console.log("Authentication error detected, attempting to refresh session...")
+          
+          // Try to refresh the session
+          const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession()
+          
+          if (refreshError || !refreshData.session) {
+            console.error("Session refresh failed, redirecting to login")
+            toast({
+              title: "Session expired",
+              description: "Please log in again",
+              variant: "destructive"
+            })
+            router.push("/login")
+            return
+          }
+          
+          // Retry the query with refreshed session
+          console.log("Session refreshed successfully, retrying location query...")
+          const { data: retryLocations, error: retryError } = await query.order("created_at", { ascending: false })
+          
+          if (retryError) {
+            console.error("Retry failed:", retryError)
+            toast({
+              title: "Failed to load locations",
+              description: "Please try refreshing the page",
+              variant: "destructive",
+            })
+            setMarkers([])
+            setIsLoading(false)
+            return
+          }
+          
+          console.log("Successfully loaded locations after retry:", retryLocations?.length || 0)
+          setMarkers(retryLocations || [])
+          setIsLoading(false)
           return
         }
         
-        console.error("Error loading locations:", locationsError)
-        console.error("Error details:", JSON.stringify(locationsError, null, 2))
-        console.error("Error message:", locationsError.message)
-        console.error("Error code:", locationsError.code)
-        console.error("Error hint:", locationsError.hint)
-        // Show toast but don't throw to prevent app crash
+        // Other errors - don't redirect, just show error
         toast({
           title: "Error loading locations",
           description: locationsError.message || "Failed to load locations",
           variant: "destructive"
         })
-        // Return early rather than throwing
+        setMarkers([])
         setIsLoading(false)
         return
       }
