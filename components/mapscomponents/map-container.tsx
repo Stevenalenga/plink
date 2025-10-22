@@ -15,6 +15,13 @@ import { LocationDialog } from "./location-dialog"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { UserSearchComponent } from "@/components/UserSearchComponent"
 import { Users } from "lucide-react"
+import { RouteDrawer } from "./route-components/route-drawer"
+import { RouteDialog } from "./route-components/route-dialog"
+import { RouteNavigationControls } from "./route-components/route-navigation-controls"
+import { SavedRoutesPanel } from "./route-components/saved-routes-panel"
+import { ManualRouteInput } from "./manual-route-input"
+import { useRouteNavigation } from "@/hooks/use-route-navigation"
+import { SavedRoute, RouteWaypoint } from "@/types"
 
 // Minimal global declarations to satisfy TS when Google Maps JS API loads at runtime
 declare global {
@@ -167,6 +174,33 @@ export function MapContainer() {
   })
   const [searchMarkerPosition, setSearchMarkerPosition] = useState<{ lat: number; lng: number } | null>(null)
 
+  // Route drawing and navigation state
+  const [isDrawingRoute, setIsDrawingRoute] = useState(false)
+  const [routeWaypoints, setRouteWaypoints] = useState<RouteWaypoint[]>([])
+  const [routeName, setRouteName] = useState("")
+  const [routeDescription, setRouteDescription] = useState("")
+  const [routeUrl, setRouteUrl] = useState("")
+  const [routeVisibility, setRouteVisibility] = useState<"public" | "followers" | "private">("private")
+  const [isSaveRouteDialogOpen, setIsSaveRouteDialogOpen] = useState(false)
+  const [savedRoutes, setSavedRoutes] = useState<SavedRoute[]>([])
+  const [isRoutesLoading, setIsRoutesLoading] = useState(false)
+  const [showRoutesPanel, setShowRoutesPanel] = useState(false)
+  
+  // Click detection state for smart route/location creation
+  const [clickMode, setClickMode] = useState<'none' | 'location' | 'route-start' | 'route-end'>('none')
+  const [clickCount, setClickCount] = useState(0)
+  const [clickPosition, setClickPosition] = useState<{lat: number, lng: number} | null>(null)
+  const [routeStartPoint, setRouteStartPoint] = useState<{lat: number, lng: number} | null>(null)
+  const [routeEndPoint, setRouteEndPoint] = useState<{lat: number, lng: number} | null>(null)
+  const [routePreview, setRoutePreview] = useState<any>(null)
+  const [calculatedDistance, setCalculatedDistance] = useState<number | undefined>(undefined)
+  const [calculatedDuration, setCalculatedDuration] = useState<number | undefined>(undefined)
+  const [showManualInput, setShowManualInput] = useState(false)
+  const tempMarkersRef = useRef<any[]>([])
+  
+  // Navigation hook
+  const routeNavigation = useRouteNavigation()
+
   // Use refs for objects that need to persist between renders but don't affect rendering
   const infoWindows = useRef<Map<string, any>>(new Map())
   // temp search marker is moved to its own component; retain ref for imperative access if needed
@@ -237,36 +271,32 @@ export function MapContainer() {
         // Continue with empty following list
       }
 
-      // Build the OR filter for locations query
-      let query = supabase
+      // Simplified query - let RLS policies handle all filtering
+      // RLS will automatically filter based on:
+      // 1. User's own locations
+      // 2. Public locations
+      // 3. Follower-shared locations (if user follows the owner)
+      console.log("Loading locations with RLS-based filtering...")
+      
+      const { data: allLocations, error: locationsError } = await supabase
         .from("locations")
         .select(`
           *,
-          users (
+          users:user_id (
             id,
             name,
             avatar_url
           )
         `)
-      
-      // If no followers table exists yet or no following users, just get public locations and own locations
-      if (followingIds.length === 0) {
-        query = query.or(`visibility.eq.public,user_id.eq.${user.id}`)
-      } else {
-        // Include followers-only locations from people user follows
-        query = query.or(`visibility.eq.public,user_id.eq.${user.id},and(visibility.eq.followers,user_id.in.(${followingIds.join(",")}))`)
-      }
-      
-      const { data: allLocations, error: locationsError } = await query
         .order("created_at", { ascending: false })
       
       if (locationsError) {
-        console.error("Error loading locations:", {
-          code: locationsError.code,
-          message: locationsError.message,
-          details: locationsError.details,
-          hint: locationsError.hint
-        })
+        console.error("Error loading locations - Full error:", locationsError)
+        console.error("Error code:", locationsError.code)
+        console.error("Error message:", locationsError.message)
+        console.error("Error details:", locationsError.details)
+        console.error("Error hint:", locationsError.hint)
+        console.error("Error stringified:", JSON.stringify(locationsError, null, 2))
         
         // Check if it's a JWT/authentication error
         if (locationsError.code === 'PGRST301' || locationsError.code === 'PGRST303' || locationsError.message?.includes('JWT')) {
@@ -288,7 +318,17 @@ export function MapContainer() {
           
           // Retry the query with refreshed session
           console.log("Session refreshed successfully, retrying location query...")
-          const { data: retryLocations, error: retryError } = await query.order("created_at", { ascending: false })
+          const { data: retryLocations, error: retryError } = await supabase
+            .from("locations")
+            .select(`
+              *,
+              users:user_id (
+                id,
+                name,
+                avatar_url
+              )
+            `)
+            .order("created_at", { ascending: false })
           
           if (retryError) {
             console.error("Retry failed:", retryError)
@@ -344,6 +384,191 @@ export function MapContainer() {
     },
     [map],
   )
+
+  // Helper function to calculate distance between two points (Haversine formula)
+  const calculateDistance = useCallback((lat1: number, lng1: number, lat2: number, lng2: number): number => {
+    const R = 6371e3 // Earth's radius in meters
+    const φ1 = (lat1 * Math.PI) / 180
+    const φ2 = (lat2 * Math.PI) / 180
+    const Δφ = ((lat2 - lat1) * Math.PI) / 180
+    const Δλ = ((lng2 - lng1) * Math.PI) / 180
+
+    const a =
+      Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+      Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2)
+
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+
+    return R * c // Distance in meters
+  }, [])
+
+  // Function to show temporary marker on map
+  const showTemporaryMarker = useCallback((position: {lat: number, lng: number}, title: string, color: string) => {
+    if (!map || !window.google) return
+    
+    const marker = new window.google.maps.Marker({
+      position,
+      map,
+      title,
+      animation: window.google.maps.Animation.BOUNCE,
+      icon: {
+        path: window.google.maps.SymbolPath.CIRCLE,
+        fillColor: color,
+        fillOpacity: 0.8,
+        strokeWeight: 2,
+        strokeColor: "#ffffff",
+        scale: 10,
+      },
+    })
+    
+    tempMarkersRef.current.push(marker)
+    
+    // Auto-remove after 3 seconds
+    setTimeout(() => {
+      marker.setMap(null)
+      tempMarkersRef.current = tempMarkersRef.current.filter(m => m !== marker)
+    }, 3000)
+  }, [map])
+
+  // Function to clear all temporary markers
+  const clearTemporaryMarkers = useCallback(() => {
+    tempMarkersRef.current.forEach(marker => marker.setMap(null))
+    tempMarkersRef.current = []
+  }, [])
+
+  // Function to calculate and preview route using Google Directions API
+  const calculateAndPreviewRoute = useCallback(async (
+    start: {lat: number, lng: number}, 
+    end: {lat: number, lng: number}
+  ) => {
+    if (!directionsServiceRef.current || !directionsRendererRef.current) {
+      toast({
+        title: "Directions not available",
+        description: "Please wait for the map to fully load",
+        variant: "destructive"
+      })
+      return
+    }
+    
+    const request = {
+      origin: start,
+      destination: end,
+      travelMode: window.google.maps.TravelMode[travelMode],
+      provideRouteAlternatives: false
+    }
+    
+    directionsServiceRef.current.route(request, (result: any, status: any) => {
+      if (status === 'OK' && result) {
+        setRoutePreview(result)
+        
+        // Show route on map
+        directionsRendererRef.current.setDirections(result)
+        
+        // Calculate route info
+        const route = result.routes[0]
+        const leg = route.legs[0]
+        
+        const distanceMeters = leg.distance.value
+        const durationSeconds = leg.duration.value
+        
+        setCalculatedDistance(distanceMeters)
+        setCalculatedDuration(Math.round(durationSeconds / 60)) // Convert to minutes
+        
+        // Extract waypoints from the route
+        const waypoints: RouteWaypoint[] = route.overview_path.map((point: any, index: number) => ({
+          lat: point.lat(),
+          lng: point.lng(),
+          order: index
+        }))
+        
+        setRouteWaypoints(waypoints)
+        
+        // Set route info for display
+        setRouteInfo({
+          distanceText: leg.distance.text,
+          durationText: leg.duration.text,
+        })
+        
+        // Open save dialog
+        setIsSaveRouteDialogOpen(true)
+        
+        toast({
+          title: "Route calculated",
+          description: `${leg.distance.text}, ${leg.duration.text}`,
+        })
+      } else {
+        toast({
+          title: "Route calculation failed",
+          description: "Unable to calculate route between these points",
+          variant: "destructive"
+        })
+      }
+    })
+  }, [travelMode, toast])
+
+  // Function to handle manual route creation
+  const handleManualRouteCreated = useCallback((waypoints: {lat: number, lng: number, name?: string}[]) => {
+    setShowManualInput(false)
+    
+    // Calculate total distance
+    let totalDistance = 0
+    for (let i = 0; i < waypoints.length - 1; i++) {
+      totalDistance += calculateDistance(
+        waypoints[i].lat,
+        waypoints[i].lng,
+        waypoints[i + 1].lat,
+        waypoints[i + 1].lng
+      )
+    }
+    
+    // Estimate duration (assume average speed of 5 km/h for walking)
+    const durationMinutes = Math.round((totalDistance / 1000) * 12) // 12 minutes per km
+    
+    setCalculatedDistance(totalDistance)
+    setCalculatedDuration(durationMinutes)
+    
+    // Convert to RouteWaypoint format
+    const routePoints: RouteWaypoint[] = waypoints.map((wp, index) => ({
+      lat: wp.lat,
+      lng: wp.lng,
+      name: wp.name,
+      order: index
+    }))
+    
+    setRouteWaypoints(routePoints)
+    
+    // Draw the route on the map
+    if (map && window.google) {
+      // Clear previous route
+      if (routePolylineRef.current) {
+        routePolylineRef.current.setMap(null)
+      }
+      
+      // Create new polyline
+      const path = waypoints.map(wp => ({lat: wp.lat, lng: wp.lng}))
+      routePolylineRef.current = new window.google.maps.Polyline({
+        path,
+        geodesic: true,
+        strokeColor: "#3b82f6",
+        strokeOpacity: 0.8,
+        strokeWeight: 6,
+        map,
+      })
+      
+      // Fit bounds to show entire route
+      const bounds = new window.google.maps.LatLngBounds()
+      path.forEach(point => bounds.extend(point))
+      map.fitBounds(bounds)
+    }
+    
+    // Open save dialog
+    setIsSaveRouteDialogOpen(true)
+    
+    toast({
+      title: "Route created",
+      description: `${waypoints.length} waypoints, ${(totalDistance / 1000).toFixed(2)}km`,
+    })
+  }, [map, calculateDistance, toast])
 
   // Function to display a route on the map
   const displayRoute = useCallback(
@@ -506,37 +731,140 @@ export function MapContainer() {
           },
         })
 
-        // Add click listener to map
+        // Add click listener to map with smart detection
         googleMap.addListener("click", (event: any) => {
           if (!event.latLng) return
 
-          if (isAuthenticated) {
-            const clickedPosition = {
-              lat: event.latLng.lat(),
-              lng: event.latLng.lng(),
-            }
-            
-            console.log("Map clicked, opening dialog with position:", clickedPosition);
-            
-            // Set the search marker position to provide visual feedback
-            setSearchMarkerPosition(clickedPosition);
-            
-            // Set the selected location for the dialog
-            setSelectedLocation(clickedPosition);
-            
-            // Reset form fields before opening
-            setLocationName("");
-            setLocationUrl("");
-            setVisibility("private");
-            
-            // Force dialog to open
-            setIsSaveDialogOpen(true);
-          } else {
+          if (!isAuthenticated) {
             toast({
               title: "Login Required",
               description: "Please log in to save locations on the map",
               variant: "destructive",
             })
+            return
+          }
+
+          const clickedPosition = {
+            lat: event.latLng.lat(),
+            lng: event.latLng.lng(),
+          }
+          
+          // Handle different click modes
+          if (clickMode === 'none') {
+            // Normal mode - save location
+            console.log("Map clicked, opening dialog with position:", clickedPosition);
+            setSearchMarkerPosition(clickedPosition);
+            setSelectedLocation(clickedPosition);
+            setLocationName("");
+            setLocationUrl("");
+            setVisibility("private");
+            setIsSaveDialogOpen(true);
+            
+          } else if (clickMode === 'location') {
+            // Location mode - save location
+            console.log("Location mode: saving location at:", clickedPosition);
+            setSearchMarkerPosition(clickedPosition);
+            setSelectedLocation(clickedPosition);
+            setLocationName("");
+            setLocationUrl("");
+            setVisibility("private");
+            setIsSaveDialogOpen(true);
+            
+          } else if (clickMode === 'route-start') {
+            // Route start mode - detect triple click
+            // Check if clicking near previous position
+            if (clickPosition && calculateDistance(
+              clickPosition.lat, clickPosition.lng,
+              clickedPosition.lat, clickedPosition.lng
+            ) < 100) {
+              // Same location - increment counter
+              setClickCount(prev => prev + 1)
+              
+              if (clickCount === 0) {
+                showTemporaryMarker(clickedPosition, 'Click 2 more times', '#22c55e')
+                toast({ title: "Route Start", description: "Click 2 more times to confirm" })
+              } else if (clickCount === 1) {
+                showTemporaryMarker(clickedPosition, 'Click 1 more time', '#22c55e')
+                toast({ title: "Almost there!", description: "Click once more to confirm start point" })
+              } else if (clickCount >= 2) {
+                // Third click - confirm start point
+                setRouteStartPoint(clickedPosition)
+                setClickMode('route-end')
+                setClickCount(0)
+                setClickPosition(null)
+                clearTemporaryMarkers()
+                
+                // Add permanent marker for start
+                if (window.google) {
+                  const marker = new window.google.maps.Marker({
+                    position: clickedPosition,
+                    map: googleMap,
+                    title: "Route Start",
+                    icon: {
+                      path: window.google.maps.SymbolPath.CIRCLE,
+                      fillColor: "#22c55e",
+                      fillOpacity: 1,
+                      strokeWeight: 3,
+                      strokeColor: "#ffffff",
+                      scale: 12,
+                    },
+                  })
+                  tempMarkersRef.current.push(marker)
+                }
+                
+                toast({ 
+                  title: "Start Point Set", 
+                  description: "Now click to select the end point" 
+                })
+              }
+            } else {
+              // Different location - reset counter
+              setClickCount(0)
+              setClickPosition(clickedPosition)
+              showTemporaryMarker(clickedPosition, 'Click 2 more times', '#22c55e')
+              toast({ title: "Route Start", description: "Click 2 more times to confirm" })
+            }
+            
+          } else if (clickMode === 'route-end' && routeStartPoint) {
+            // Route end mode - select end point
+            // Must be at least 100m away from start
+            if (calculateDistance(
+              routeStartPoint.lat, routeStartPoint.lng,
+              clickedPosition.lat, clickedPosition.lng
+            ) < 100) {
+              toast({ 
+                title: "Too close", 
+                description: "End point must be at least 100m from start point",
+                variant: "destructive"
+              })
+              return
+            }
+            
+            setRouteEndPoint(clickedPosition)
+            
+            // Add marker for end
+            if (window.google) {
+              const marker = new window.google.maps.Marker({
+                position: clickedPosition,
+                map: googleMap,
+                title: "Route End",
+                icon: {
+                  path: window.google.maps.SymbolPath.CIRCLE,
+                  fillColor: "#ef4444",
+                  fillOpacity: 1,
+                  strokeWeight: 3,
+                  strokeColor: "#ffffff",
+                  scale: 12,
+                },
+              })
+              tempMarkersRef.current.push(marker)
+            }
+            
+            // Calculate route
+            calculateAndPreviewRoute(routeStartPoint, clickedPosition)
+            
+            // Reset mode
+            setClickMode('none')
           }
         })
 
@@ -912,6 +1240,82 @@ export function MapContainer() {
           )}
         </div>
       </div>
+
+      {/* Mode Selector */}
+      {isAuthenticated && (
+        <div className="absolute top-20 left-1/2 transform -translate-x-1/2 z-30">
+          <div className="bg-white dark:bg-neutral-900 rounded-lg shadow-lg p-2 flex gap-2">
+            <button
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                clickMode === 'none'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-100 dark:bg-neutral-800 text-gray-700 dark:text-neutral-300 hover:bg-gray-200 dark:hover:bg-neutral-700'
+              }`}
+              onClick={() => {
+                setClickMode('none')
+                setClickCount(0)
+                setRouteStartPoint(null)
+                setRouteEndPoint(null)
+                clearTemporaryMarkers()
+                if (routePolylineRef.current) {
+                  routePolylineRef.current.setMap(null)
+                }
+                toast({ title: "Normal Mode", description: "Click to add locations" })
+              }}
+            >
+              <span className="mr-2">🖱️</span>
+              Normal
+            </button>
+            
+            <button
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                clickMode === 'location'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-100 dark:bg-neutral-800 text-gray-700 dark:text-neutral-300 hover:bg-gray-200 dark:hover:bg-neutral-700'
+              }`}
+              onClick={() => {
+                setClickMode('location')
+                setClickCount(0)
+                clearTemporaryMarkers()
+                toast({ title: "Location Mode", description: "Click anywhere to add a location" })
+              }}
+            >
+              <span className="mr-2">📍</span>
+              Add Location
+            </button>
+            
+            <button
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                clickMode.startsWith('route')
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-100 dark:bg-neutral-800 text-gray-700 dark:text-neutral-300 hover:bg-gray-200 dark:hover:bg-neutral-700'
+              }`}
+              onClick={() => {
+                setClickMode('route-start')
+                setClickCount(0)
+                setRouteStartPoint(null)
+                setRouteEndPoint(null)
+                clearTemporaryMarkers()
+                toast({ 
+                  title: "Route Mode", 
+                  description: "Click 3 times on start point, then select end point" 
+                })
+              }}
+            >
+              <span className="mr-2">🗺️</span>
+              Add Route
+            </button>
+            
+            <button
+              className="px-4 py-2 rounded-md text-sm font-medium bg-gray-100 dark:bg-neutral-800 text-gray-700 dark:text-neutral-300 hover:bg-gray-200 dark:hover:bg-neutral-700 transition-colors"
+              onClick={() => setShowManualInput(true)}
+            >
+              <span className="mr-2">✏️</span>
+              Manual Entry
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Directions Controls */}
       <div className="absolute top-4 left-4 z-30 mt-16">
@@ -1293,6 +1697,125 @@ export function MapContainer() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Manual Route Input Dialog */}
+      <Dialog open={showManualInput} onOpenChange={setShowManualInput}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto p-6">
+          <DialogHeader>
+            <DialogTitle>Manual Route Entry</DialogTitle>
+            <DialogDescription>
+              Enter coordinates for each waypoint on your route
+            </DialogDescription>
+          </DialogHeader>
+          <ManualRouteInput
+            onRouteCreated={handleManualRouteCreated}
+            onClose={() => setShowManualInput(false)}
+          />
+        </DialogContent>
+      </Dialog>
+
+      {/* Enhanced Route Save Dialog */}
+      <RouteDialog
+        open={isSaveRouteDialogOpen}
+        routeName={routeName}
+        routeDescription={routeDescription}
+        routeUrl={routeUrl}
+        visibility={routeVisibility}
+        waypoints={routeWaypoints}
+        distance={calculatedDistance}
+        estimatedDuration={calculatedDuration}
+        setRouteName={setRouteName}
+        setRouteDescription={setRouteDescription}
+        setRouteUrl={setRouteUrl}
+        setVisibility={setRouteVisibility}
+        onCancel={() => {
+          setIsSaveRouteDialogOpen(false)
+          setRouteName("")
+          setRouteDescription("")
+          setRouteUrl("")
+          setRouteWaypoints([])
+          setCalculatedDistance(undefined)
+          setCalculatedDuration(undefined)
+          clearTemporaryMarkers()
+          if (routePolylineRef.current) {
+            routePolylineRef.current.setMap(null)
+          }
+          if (directionsRendererRef.current) {
+            directionsRendererRef.current.setDirections({ routes: [] })
+          }
+        }}
+        onSave={async (validatedUrl: string | null, expiresAt?: string | null, selectedFollowers?: string[]) => {
+          if (!user) {
+            toast({ title: "Login required", variant: "destructive" })
+            return
+          }
+
+          if (!routeName.trim()) {
+            toast({ title: "Route name required", variant: "destructive" })
+            return
+          }
+
+          if (routeWaypoints.length < 2) {
+            toast({ title: "At least 2 waypoints required", variant: "destructive" })
+            return
+          }
+
+          try {
+            // Save route via API
+            const response = await fetch("/api/routes", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                name: routeName,
+                description: routeDescription || null,
+                url: validatedUrl,
+                visibility: routeVisibility,
+                expires_at: expiresAt,
+                distance: calculatedDistance,
+                estimated_duration: calculatedDuration,
+                points: routeWaypoints,
+                selectedFollowers: routeVisibility === 'followers' ? selectedFollowers : undefined
+              }),
+            })
+
+            if (!response.ok) {
+              const error = await response.json()
+              throw new Error(error.message || "Failed to save route")
+            }
+
+            const savedRoute = await response.json()
+
+            toast({
+              title: "Route saved successfully",
+              description: `"${routeName}" has been saved`,
+            })
+
+            // Reset form
+            setIsSaveRouteDialogOpen(false)
+            setRouteName("")
+            setRouteDescription("")
+            setRouteUrl("")
+            setRouteWaypoints([])
+            setCalculatedDistance(undefined)
+            setCalculatedDuration(undefined)
+            clearTemporaryMarkers()
+            
+            // Refresh routes list if panel is open
+            if (showRoutesPanel) {
+              // Trigger routes reload
+              setIsRoutesLoading(true)
+            }
+
+          } catch (error: any) {
+            console.error("Error saving route:", error)
+            toast({
+              title: "Failed to save route",
+              description: error.message,
+              variant: "destructive",
+            })
+          }
+        }}
+      />
     </div>
   )
 }

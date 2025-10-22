@@ -17,6 +17,16 @@ jest.mock('@/hooks/use-user')
 jest.mock('@/hooks/use-toast') 
 jest.mock('next/navigation')
 jest.mock('@/lib/supabase')
+jest.mock('@/hooks/use-route-navigation', () => ({
+  useRouteNavigation: jest.fn(() => ({
+    isNavigating: false,
+    currentWaypointIndex: 0,
+    distanceToNextWaypoint: null,
+    startNavigation: jest.fn(),
+    stopNavigation: jest.fn(),
+    updateUserPosition: jest.fn(),
+  }))
+}))
 
 // Mock the Google Maps JavaScript API
 jest.mock('@googlemaps/js-api-loader', () => ({
@@ -64,18 +74,27 @@ describe('MapContainer', () => {
     expect(mapRegion).toHaveAttribute('aria-busy', 'true')
   })
 
-  it('shows error toast when API key is missing', () => {
-    const mockToast = jest.fn()
-    ;(useToast as jest.Mock).mockReturnValue({ toast: mockToast })
-    process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY = ''
+  it('does not show mode selector when not authenticated', () => {
+    ;(useUser as jest.Mock).mockReturnValue({ user: null, isAuthenticated: false })
     
     render(<MapContainer />)
     
-    expect(mockToast).toHaveBeenCalledWith(
-      expect.objectContaining({
-        title: 'API Key Missing',
-        variant: 'destructive'
-      })
-    )
+    // Mode selector should not be visible for unauthenticated users
+    expect(screen.queryByText('Add Location')).not.toBeInTheDocument()
+    expect(screen.queryByText('Add Route')).not.toBeInTheDocument()
+  })
+
+  it('shows mode selector when authenticated', () => {
+    ;(useUser as jest.Mock).mockReturnValue({ 
+      user: { id: 'test-user-id', email: 'test@example.com' }, 
+      isAuthenticated: true 
+    })
+    
+    render(<MapContainer />)
+    
+    // Mode selector should be visible for authenticated users
+    expect(screen.getByText('Add Location')).toBeInTheDocument()
+    expect(screen.getByText('Add Route')).toBeInTheDocument()
+    expect(screen.getByText('Manual Entry')).toBeInTheDocument()
   })
 })

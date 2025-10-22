@@ -9,9 +9,21 @@ interface LiveLocationProps {
   map: any | null
   isEnabled: boolean
   onLocationUpdate?: (position: { lat: number; lng: number }) => void
+  navigationMode?: boolean
+  targetPosition?: { lat: number; lng: number } | null
+  onWaypointReached?: () => void
+  bearingToTarget?: number
 }
 
-export function LiveLocation({ map, isEnabled, onLocationUpdate }: LiveLocationProps) {
+export function LiveLocation({ 
+  map, 
+  isEnabled, 
+  onLocationUpdate,
+  navigationMode = false,
+  targetPosition = null,
+  onWaypointReached,
+  bearingToTarget = 0
+}: LiveLocationProps) {
   const [currentPosition, setCurrentPosition] = useState<{ lat: number; lng: number } | null>(null)
   const [isTracking, setIsTracking] = useState(false)
   const [watchId, setWatchId] = useState<number | null>(null)
@@ -112,15 +124,52 @@ export function LiveLocation({ map, isEnabled, onLocationUpdate }: LiveLocationP
     }
   }, [isEnabled, map])
 
-  // Create custom icon for user location
+  // Calculate distance between two points
+  const calculateDistance = useCallback((lat1: number, lng1: number, lat2: number, lng2: number): number => {
+    const R = 6371e3 // Earth's radius in meters
+    const φ1 = (lat1 * Math.PI) / 180
+    const φ2 = (lat2 * Math.PI) / 180
+    const Δφ = ((lat2 - lat1) * Math.PI) / 180
+    const Δλ = ((lng2 - lng1) * Math.PI) / 180
+
+    const a =
+      Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+      Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2)
+
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+
+    return R * c // Distance in meters
+  }, [])
+
+  // Check if waypoint is reached in navigation mode
+  useEffect(() => {
+    if (navigationMode && currentPosition && targetPosition && onWaypointReached) {
+      const distance = calculateDistance(
+        currentPosition.lat,
+        currentPosition.lng,
+        targetPosition.lat,
+        targetPosition.lng
+      )
+
+      // If within 50 meters of target, consider waypoint reached
+      if (distance <= 50) {
+        onWaypointReached()
+      }
+    }
+  }, [navigationMode, currentPosition, targetPosition, onWaypointReached, calculateDistance])
+
+  // Create custom icon for user location (smaller size)
   const userLocationIcon = typeof window !== "undefined" && window.google && window.google.maps && window.google.maps.SymbolPath
     ? {
-        path: window.google.maps.SymbolPath.BACKWARD_CLOSED_ARROW,
-        fillColor: "#ef4444", // Changed to red
-        fillOpacity: 1,
+        path: navigationMode 
+          ? window.google.maps.SymbolPath.FORWARD_CLOSED_ARROW 
+          : window.google.maps.SymbolPath.CIRCLE,
+        fillColor: navigationMode ? "#3b82f6" : "#ef4444",
+        fillOpacity: 0.9,
         strokeColor: "#ffffff",
-        strokeWeight: 3,
-        scale: 12,
+        strokeWeight: 2,
+        scale: navigationMode ? 8 : 6, // Reduced from 14/12 to 8/6
+        rotation: navigationMode ? bearingToTarget : 0,
       }
     : undefined;
 
@@ -128,14 +177,32 @@ export function LiveLocation({ map, isEnabled, onLocationUpdate }: LiveLocationP
     return null
   }
 
-  // Render the user's live location using the CustomMarker component
+  // Render the user's live location using the CustomMarker component (now draggable)
   return (
     <CustomMarker
       map={map}
       position={currentPosition}
-      title="Your Location"
+      title="Your Location (Drag to adjust)"
       icon={userLocationIcon}
-      animation={window.google && window.google.maps ? window.google.maps.Animation.BOUNCE : undefined}
+      draggable={true}
+      animation={undefined} // Removed bounce animation for smoother dragging
+      onClick={() => {
+        toast({
+          title: "Live Location",
+          description: "Drag the marker to manually adjust your position",
+        })
+      }}
+      onDragEnd={(newPosition: { lat: number; lng: number }) => {
+        // Update position when dragged
+        setCurrentPosition(newPosition)
+        if (onLocationUpdate) {
+          onLocationUpdate(newPosition)
+        }
+        toast({
+          title: "Position Updated",
+          description: `New location: ${newPosition.lat.toFixed(6)}, ${newPosition.lng.toFixed(6)}`,
+        })
+      }}
     />
   )
 }

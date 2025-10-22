@@ -9,12 +9,25 @@ export interface MarkerProps {
   title?: string
   icon?: any | string
   animation?: any
+  draggable?: boolean
   onClick?: () => void
+  onDragEnd?: (position: { lat: number; lng: number }) => void
   onMount?: (marker: any) => void
   onUnmount?: (marker: any) => void
 }
 
-export function CustomMarker({ map, position, title, icon, animation, onClick, onMount, onUnmount }: MarkerProps) {
+export function CustomMarker({ 
+  map, 
+  position, 
+  title, 
+  icon, 
+  animation, 
+  draggable = false,
+  onClick, 
+  onDragEnd,
+  onMount, 
+  onUnmount 
+}: MarkerProps) {
   const markerRef = useRef<any | null>(null)
 
   // Create marker only when map and google maps API are ready
@@ -27,12 +40,25 @@ export function CustomMarker({ map, position, title, icon, animation, onClick, o
       title,
       icon,
       animation,
+      draggable: draggable || !!onDragEnd, // Enable dragging if onDragEnd is provided
+      cursor: (draggable || !!onDragEnd) ? 'move' : 'pointer',
     })
 
     markerRef.current = marker
 
     if (onClick) {
       marker.addListener("click", onClick)
+    }
+
+    if (onDragEnd) {
+      marker.addListener("dragend", (event: any) => {
+        if (event.latLng) {
+          onDragEnd({
+            lat: event.latLng.lat(),
+            lng: event.latLng.lng(),
+          })
+        }
+      })
     }
 
     if (onMount) {
