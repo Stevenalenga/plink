@@ -22,11 +22,11 @@ export function LocationControl({ onToggle, className = "" }: LocationControlPro
       onClick={handleToggle}
       variant={isEnabled ? "default" : "outline"}
       size="sm"
-      className={`${className} ${isEnabled ? "bg-blue-600 hover:bg-blue-700" : ""} px-2`}
+      className={`${className} ${isEnabled ? "bg-blue-600 hover:bg-blue-700" : ""} h-12 w-12 rounded-full p-0 flex items-center justify-center`}
       title={isEnabled ? "Stop tracking location" : "Track my location"}
     >
       <svg
-        className="w-4 h-4 mr-1.5"
+        className="w-5 h-5"
         fill="none"
         stroke="currentColor"
         viewBox="0 0 24 24"
@@ -40,7 +40,6 @@ export function LocationControl({ onToggle, className = "" }: LocationControlPro
         />
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
       </svg>
-      <span className="text-xs">{isEnabled ? "Stop" : "Track"}</span>
     </Button>
   )
 }

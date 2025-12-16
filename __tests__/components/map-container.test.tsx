@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import { MapContainer } from '@/components/mapscomponents/map-container'
 import '@testing-library/jest-dom'
 
@@ -68,23 +68,28 @@ describe('MapContainer', () => {
     expect(mapRegion).toBeInTheDocument()
   })
 
-  it('initializes with loading state', () => {
+  it('loads the map', async () => {
     render(<MapContainer />)
+    
     const mapRegion = screen.getByRole('region', { name: /map container/i })
-    expect(mapRegion).toHaveAttribute('aria-busy', 'true')
+    
+    // Wait for loading to complete
+    await waitFor(() => {
+      expect(screen.queryByText('Loading map...')).not.toBeInTheDocument()
+      expect(mapRegion).toHaveAttribute('aria-busy', 'false')
+    })
   })
 
-  it('does not show mode selector when not authenticated', () => {
+  it('does not show add button when not authenticated', () => {
     ;(useUser as jest.Mock).mockReturnValue({ user: null, isAuthenticated: false })
     
     render(<MapContainer />)
     
-    // Mode selector should not be visible for unauthenticated users
-    expect(screen.queryByText('Add Location')).not.toBeInTheDocument()
-    expect(screen.queryByText('Add Route')).not.toBeInTheDocument()
+    // Add button should not be visible for unauthenticated users
+    expect(screen.queryByLabelText('Add location or route')).not.toBeInTheDocument()
   })
 
-  it('shows mode selector when authenticated', () => {
+  it('shows add button when authenticated', () => {
     ;(useUser as jest.Mock).mockReturnValue({ 
       user: { id: 'test-user-id', email: 'test@example.com' }, 
       isAuthenticated: true 
@@ -92,9 +97,7 @@ describe('MapContainer', () => {
     
     render(<MapContainer />)
     
-    // Mode selector should be visible for authenticated users
-    expect(screen.getByText('Add Location')).toBeInTheDocument()
-    expect(screen.getByText('Add Route')).toBeInTheDocument()
-    expect(screen.getByText('Manual Entry')).toBeInTheDocument()
+    // Add button should be visible for authenticated users
+    expect(screen.getByLabelText('Add location or route')).toBeInTheDocument()
   })
 })

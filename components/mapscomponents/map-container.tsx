@@ -19,7 +19,7 @@ import { RouteDrawer } from "./route-components/route-drawer"
 import { RouteDialog } from "./route-components/route-dialog"
 import { RouteNavigationControls } from "./route-components/route-navigation-controls"
 import { SavedRoutesPanel } from "./route-components/saved-routes-panel"
-import { ManualRouteInput } from "./manual-route-input"
+import { UnifiedAddDialog } from "./unified-add-dialog"
 import { useRouteNavigation } from "@/hooks/use-route-navigation"
 import { SavedRoute, RouteWaypoint } from "@/types"
 
@@ -185,18 +185,11 @@ export function MapContainer() {
   const [savedRoutes, setSavedRoutes] = useState<SavedRoute[]>([])
   const [isRoutesLoading, setIsRoutesLoading] = useState(false)
   const [showRoutesPanel, setShowRoutesPanel] = useState(false)
-  
-  // Click detection state for smart route/location creation
-  const [clickMode, setClickMode] = useState<'none' | 'location' | 'route-start' | 'route-end'>('none')
-  const [clickCount, setClickCount] = useState(0)
-  const [clickPosition, setClickPosition] = useState<{lat: number, lng: number} | null>(null)
-  const [routeStartPoint, setRouteStartPoint] = useState<{lat: number, lng: number} | null>(null)
-  const [routeEndPoint, setRouteEndPoint] = useState<{lat: number, lng: number} | null>(null)
-  const [routePreview, setRoutePreview] = useState<any>(null)
   const [calculatedDistance, setCalculatedDistance] = useState<number | undefined>(undefined)
   const [calculatedDuration, setCalculatedDuration] = useState<number | undefined>(undefined)
-  const [showManualInput, setShowManualInput] = useState(false)
-  const tempMarkersRef = useRef<any[]>([])
+  
+  // Unified add dialog state
+  const [isUnifiedDialogOpen, setIsUnifiedDialogOpen] = useState(false)
   
   // Navigation hook
   const routeNavigation = useRouteNavigation()
@@ -206,7 +199,6 @@ export function MapContainer() {
   // temp search marker is moved to its own component; retain ref for imperative access if needed
   const tempMarkerRef = useRef<any | null>(null)
   const routePolylineRef = useRef<any | null>(null)
-  const routeMarkersRef = useRef<any[]>([])
 
   const [searchInput, setSearchInput] = useState("")
   const autocompleteService = useRef<any | null>(null)
@@ -430,86 +422,8 @@ export function MapContainer() {
     }, 3000)
   }, [map])
 
-  // Function to clear all temporary markers
-  const clearTemporaryMarkers = useCallback(() => {
-    tempMarkersRef.current.forEach(marker => marker.setMap(null))
-    tempMarkersRef.current = []
-  }, [])
-
-  // Function to calculate and preview route using Google Directions API
-  const calculateAndPreviewRoute = useCallback(async (
-    start: {lat: number, lng: number}, 
-    end: {lat: number, lng: number}
-  ) => {
-    if (!directionsServiceRef.current || !directionsRendererRef.current) {
-      toast({
-        title: "Directions not available",
-        description: "Please wait for the map to fully load",
-        variant: "destructive"
-      })
-      return
-    }
-    
-    const request = {
-      origin: start,
-      destination: end,
-      travelMode: window.google.maps.TravelMode[travelMode],
-      provideRouteAlternatives: false
-    }
-    
-    directionsServiceRef.current.route(request, (result: any, status: any) => {
-      if (status === 'OK' && result) {
-        setRoutePreview(result)
-        
-        // Show route on map
-        directionsRendererRef.current.setDirections(result)
-        
-        // Calculate route info
-        const route = result.routes[0]
-        const leg = route.legs[0]
-        
-        const distanceMeters = leg.distance.value
-        const durationSeconds = leg.duration.value
-        
-        setCalculatedDistance(distanceMeters)
-        setCalculatedDuration(Math.round(durationSeconds / 60)) // Convert to minutes
-        
-        // Extract waypoints from the route
-        const waypoints: RouteWaypoint[] = route.overview_path.map((point: any, index: number) => ({
-          lat: point.lat(),
-          lng: point.lng(),
-          order: index
-        }))
-        
-        setRouteWaypoints(waypoints)
-        
-        // Set route info for display
-        setRouteInfo({
-          distanceText: leg.distance.text,
-          durationText: leg.duration.text,
-        })
-        
-        // Open save dialog
-        setIsSaveRouteDialogOpen(true)
-        
-        toast({
-          title: "Route calculated",
-          description: `${leg.distance.text}, ${leg.duration.text}`,
-        })
-      } else {
-        toast({
-          title: "Route calculation failed",
-          description: "Unable to calculate route between these points",
-          variant: "destructive"
-        })
-      }
-    })
-  }, [travelMode, toast])
-
   // Function to handle manual route creation
   const handleManualRouteCreated = useCallback((waypoints: {lat: number, lng: number, name?: string}[]) => {
-    setShowManualInput(false)
-    
     // Calculate total distance
     let totalDistance = 0
     for (let i = 0; i < waypoints.length - 1; i++) {
@@ -731,7 +645,7 @@ export function MapContainer() {
           },
         })
 
-        // Add click listener to map with smart detection
+        // Add click listener to map
         googleMap.addListener("click", (event: any) => {
           if (!event.latLng) return
 
@@ -749,126 +663,11 @@ export function MapContainer() {
             lng: event.latLng.lng(),
           }
           
-          // Handle different click modes
-          if (clickMode === 'none') {
-            // Normal mode - save location
-            console.log("Map clicked, opening dialog with position:", clickedPosition);
-            setSearchMarkerPosition(clickedPosition);
-            setSelectedLocation(clickedPosition);
-            setLocationName("");
-            setLocationUrl("");
-            setVisibility("private");
-            setIsSaveDialogOpen(true);
-            
-          } else if (clickMode === 'location') {
-            // Location mode - save location
-            console.log("Location mode: saving location at:", clickedPosition);
-            setSearchMarkerPosition(clickedPosition);
-            setSelectedLocation(clickedPosition);
-            setLocationName("");
-            setLocationUrl("");
-            setVisibility("private");
-            setIsSaveDialogOpen(true);
-            
-          } else if (clickMode === 'route-start') {
-            // Route start mode - detect triple click
-            // Check if clicking near previous position
-            if (clickPosition && calculateDistance(
-              clickPosition.lat, clickPosition.lng,
-              clickedPosition.lat, clickedPosition.lng
-            ) < 100) {
-              // Same location - increment counter
-              setClickCount(prev => prev + 1)
-              
-              if (clickCount === 0) {
-                showTemporaryMarker(clickedPosition, 'Click 2 more times', '#22c55e')
-                toast({ title: "Route Start", description: "Click 2 more times to confirm" })
-              } else if (clickCount === 1) {
-                showTemporaryMarker(clickedPosition, 'Click 1 more time', '#22c55e')
-                toast({ title: "Almost there!", description: "Click once more to confirm start point" })
-              } else if (clickCount >= 2) {
-                // Third click - confirm start point
-                setRouteStartPoint(clickedPosition)
-                setClickMode('route-end')
-                setClickCount(0)
-                setClickPosition(null)
-                clearTemporaryMarkers()
-                
-                // Add permanent marker for start
-                if (window.google) {
-                  const marker = new window.google.maps.Marker({
-                    position: clickedPosition,
-                    map: googleMap,
-                    title: "Route Start",
-                    icon: {
-                      path: window.google.maps.SymbolPath.CIRCLE,
-                      fillColor: "#22c55e",
-                      fillOpacity: 1,
-                      strokeWeight: 3,
-                      strokeColor: "#ffffff",
-                      scale: 12,
-                    },
-                  })
-                  tempMarkersRef.current.push(marker)
-                }
-                
-                toast({ 
-                  title: "Start Point Set", 
-                  description: "Now click to select the end point" 
-                })
-              }
-            } else {
-              // Different location - reset counter
-              setClickCount(0)
-              setClickPosition(clickedPosition)
-              showTemporaryMarker(clickedPosition, 'Click 2 more times', '#22c55e')
-              toast({ title: "Route Start", description: "Click 2 more times to confirm" })
-            }
-            
-          } else if (clickMode === 'route-end' && routeStartPoint) {
-            // Route end mode - select end point
-            // Must be at least 100m away from start
-            if (calculateDistance(
-              routeStartPoint.lat, routeStartPoint.lng,
-              clickedPosition.lat, clickedPosition.lng
-            ) < 100) {
-              toast({ 
-                title: "Too close", 
-                description: "End point must be at least 100m from start point",
-                variant: "destructive"
-              })
-              return
-            }
-            
-            setRouteEndPoint(clickedPosition)
-            
-            // Add marker for end
-            if (window.google) {
-              const marker = new window.google.maps.Marker({
-                position: clickedPosition,
-                map: googleMap,
-                title: "Route End",
-                icon: {
-                  path: window.google.maps.SymbolPath.CIRCLE,
-                  fillColor: "#ef4444",
-                  fillOpacity: 1,
-                  strokeWeight: 3,
-                  strokeColor: "#ffffff",
-                  scale: 12,
-                },
-              })
-              tempMarkersRef.current.push(marker)
-            }
-            
-            // Calculate route
-            calculateAndPreviewRoute(routeStartPoint, clickedPosition)
-            
-            // Reset mode
-            setClickMode('none')
-          }
-        })
-
-        // Clear loading state
+          // Open unified dialog for location
+          setSearchMarkerPosition(clickedPosition)
+          setSelectedLocation(clickedPosition)
+          setIsUnifiedDialogOpen(true)
+        })        // Clear loading state
         setIsLoading(false)
 
       } catch (error: any) {
@@ -1241,82 +1040,6 @@ export function MapContainer() {
         </div>
       </div>
 
-      {/* Mode Selector */}
-      {isAuthenticated && (
-        <div className="absolute top-20 left-1/2 transform -translate-x-1/2 z-30">
-          <div className="bg-white dark:bg-neutral-900 rounded-lg shadow-lg p-2 flex gap-2">
-            <button
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                clickMode === 'none'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 dark:bg-neutral-800 text-gray-700 dark:text-neutral-300 hover:bg-gray-200 dark:hover:bg-neutral-700'
-              }`}
-              onClick={() => {
-                setClickMode('none')
-                setClickCount(0)
-                setRouteStartPoint(null)
-                setRouteEndPoint(null)
-                clearTemporaryMarkers()
-                if (routePolylineRef.current) {
-                  routePolylineRef.current.setMap(null)
-                }
-                toast({ title: "Normal Mode", description: "Click to add locations" })
-              }}
-            >
-              <span className="mr-2">🖱️</span>
-              Normal
-            </button>
-            
-            <button
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                clickMode === 'location'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 dark:bg-neutral-800 text-gray-700 dark:text-neutral-300 hover:bg-gray-200 dark:hover:bg-neutral-700'
-              }`}
-              onClick={() => {
-                setClickMode('location')
-                setClickCount(0)
-                clearTemporaryMarkers()
-                toast({ title: "Location Mode", description: "Click anywhere to add a location" })
-              }}
-            >
-              <span className="mr-2">📍</span>
-              Add Location
-            </button>
-            
-            <button
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                clickMode.startsWith('route')
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 dark:bg-neutral-800 text-gray-700 dark:text-neutral-300 hover:bg-gray-200 dark:hover:bg-neutral-700'
-              }`}
-              onClick={() => {
-                setClickMode('route-start')
-                setClickCount(0)
-                setRouteStartPoint(null)
-                setRouteEndPoint(null)
-                clearTemporaryMarkers()
-                toast({ 
-                  title: "Route Mode", 
-                  description: "Click 3 times on start point, then select end point" 
-                })
-              }}
-            >
-              <span className="mr-2">🗺️</span>
-              Add Route
-            </button>
-            
-            <button
-              className="px-4 py-2 rounded-md text-sm font-medium bg-gray-100 dark:bg-neutral-800 text-gray-700 dark:text-neutral-300 hover:bg-gray-200 dark:hover:bg-neutral-700 transition-colors"
-              onClick={() => setShowManualInput(true)}
-            >
-              <span className="mr-2">✏️</span>
-              Manual Entry
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* Directions Controls */}
       <div className="absolute top-4 left-4 z-30 mt-16">
         <div className="bg-white/95 dark:bg-neutral-900/95 rounded-lg shadow p-3 flex items-center gap-2">
@@ -1387,30 +1110,11 @@ export function MapContainer() {
         </div>
 
         {/* Moved Add (+) next to My Location (stacked with small gap) */}
+        {isAuthenticated && (
         <div className="pointer-events-auto">
           <button
-            aria-label="Add location"
-            onClick={() => {
-              console.log("Add location button clicked");
-              const loc = destination ?? searchMarkerPosition ?? origin;
-              if (loc) {
-                console.log("Using location:", loc);
-                setSelectedLocation({ lat: loc.lat, lng: loc.lng });
-                setIsSaveDialogOpen(true);
-                if (map) {
-                  map.panTo(loc);
-                  map.setZoom(15);
-                }
-              } else {
-                console.log("No location available, opening empty dialog");
-                setIsSaveDialogOpen(true);
-                toast({
-                  title: "No location selected",
-                  description:
-                    "Click on the map or search a place to choose a location. You can also enable live location.",
-                });
-              }
-            }}
+            aria-label="Add location or route"
+            onClick={() => setIsUnifiedDialogOpen(true)}
             className="
               h-12 w-12 rounded-full shadow-lg
               bg-primary text-primary-foreground
@@ -1420,13 +1124,14 @@ export function MapContainer() {
               transition-colors
             "
             style={{ lineHeight: 0 }}
-            title="Add location"
+            title="Add Location or Route"
           >
             <span className="select-none" aria-hidden="true">
               +
             </span>
           </button>
         </div>
+        )}
       </div>
 
       <div ref={mapRef} className="w-full h-full" />
@@ -1698,21 +1403,15 @@ export function MapContainer() {
         </DialogContent>
       </Dialog>
 
-      {/* Manual Route Input Dialog */}
-      <Dialog open={showManualInput} onOpenChange={setShowManualInput}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto p-6">
-          <DialogHeader>
-            <DialogTitle>Manual Route Entry</DialogTitle>
-            <DialogDescription>
-              Enter coordinates for each waypoint on your route
-            </DialogDescription>
-          </DialogHeader>
-          <ManualRouteInput
-            onRouteCreated={handleManualRouteCreated}
-            onClose={() => setShowManualInput(false)}
-          />
-        </DialogContent>
-      </Dialog>
+      {/* Unified Add Dialog */}
+      <UnifiedAddDialog
+        open={isUnifiedDialogOpen}
+        onOpenChange={setIsUnifiedDialogOpen}
+        initialLat={selectedLocation?.lat}
+        initialLng={selectedLocation?.lng}
+        onLocationSaved={() => loadLocations()}
+        onRouteCreated={handleManualRouteCreated}
+      />
 
       {/* Enhanced Route Save Dialog */}
       <RouteDialog
@@ -1736,7 +1435,6 @@ export function MapContainer() {
           setRouteWaypoints([])
           setCalculatedDistance(undefined)
           setCalculatedDuration(undefined)
-          clearTemporaryMarkers()
           if (routePolylineRef.current) {
             routePolylineRef.current.setMap(null)
           }

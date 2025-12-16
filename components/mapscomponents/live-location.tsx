@@ -158,18 +158,16 @@ export function LiveLocation({
     }
   }, [navigationMode, currentPosition, targetPosition, onWaypointReached, calculateDistance])
 
-  // Create custom icon for user location (smaller size)
+  // Create custom icon for user location (circular)
   const userLocationIcon = typeof window !== "undefined" && window.google && window.google.maps && window.google.maps.SymbolPath
     ? {
-        path: navigationMode 
-          ? window.google.maps.SymbolPath.FORWARD_CLOSED_ARROW 
-          : window.google.maps.SymbolPath.CIRCLE,
+        path: window.google.maps.SymbolPath.CIRCLE,
         fillColor: navigationMode ? "#3b82f6" : "#ef4444",
         fillOpacity: 0.9,
         strokeColor: "#ffffff",
         strokeWeight: 2,
-        scale: navigationMode ? 8 : 6, // Reduced from 14/12 to 8/6
-        rotation: navigationMode ? bearingToTarget : 0,
+        scale: navigationMode ? 8 : 6,
+        rotation: 0, // No rotation needed for circular marker
       }
     : undefined;
 
