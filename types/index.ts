@@ -69,3 +69,51 @@ export interface LocationFollower {
   follower_id: string
   created_at: string
 }
+
+// Bidding types
+export type BidStatus = 'pending' | 'accepted' | 'rejected' | 'expired'
+
+export interface Bid {
+  id: string
+  location_id: string
+  bidder_id: string
+  amount: number
+  message?: string | null
+  status: BidStatus
+  created_at: string
+  expires_at: string
+  updated_at: string
+}
+
+export interface BidWithBidder extends Bid {
+  bidder: {
+    id: string
+    name: string
+    avatar_url: string | null
+    email?: string
+  }
+}
+
+export interface BidWithLocation extends Bid {
+  location: {
+    id: string
+    name: string
+    lat: number
+    lng: number
+    user_id: string
+    visibility: Visibility
+    accepts_bids: boolean
+  }
+}
+
+export interface CreateBidPayload {
+  location_id: string
+  amount: number
+  message?: string
+}
+
+export interface UpdateBidPayload {
+  amount?: number
+  message?: string
+  status?: BidStatus
+}

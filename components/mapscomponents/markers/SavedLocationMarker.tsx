@@ -9,9 +9,10 @@ type Props = {
   title: string
   onClick?: () => void
   visibility?: 'public' | 'followers' | 'private'  // Add visibility prop
+  acceptsBids?: boolean  // Add accepts bids prop
 }
 
-export default function SavedLocationMarker({ map, id, position, title, onClick, visibility = 'private' }: Props) {
+export default function SavedLocationMarker({ map, id, position, title, onClick, visibility = 'private', acceptsBids = false }: Props) {
   const markerRef = useRef<any | null>(null)
   const infoWindowRef = useRef<any | null>(null)
 
@@ -38,13 +39,25 @@ export default function SavedLocationMarker({ map, id, position, title, onClick,
       markerRef.current = new (window as any).google.maps.Marker({
         position,
         map,
-        title,
+        title: acceptsBids ? `💰 ${title}` : title,
         icon: buildIcon(),
+        label: acceptsBids ? {
+          text: '💰',
+          color: '#ffffff',
+          fontSize: '14px',
+          fontWeight: 'bold',
+        } : undefined,
       })
     } else {
       markerRef.current.setPosition(position)
-      markerRef.current.setTitle(title)
+      markerRef.current.setTitle(acceptsBids ? `💰 ${title}` : title)
       markerRef.current.setIcon(buildIcon())  // Update icon when visibility changes
+      markerRef.current.setLabel(acceptsBids ? {
+        text: '💰',
+        color: '#ffffff',
+        fontSize: '14px',
+        fontWeight: 'bold',
+      } : undefined)
       if (markerRef.current.getMap() !== map) {
         markerRef.current.setMap(map)
       }
@@ -66,7 +79,7 @@ export default function SavedLocationMarker({ map, id, position, title, onClick,
         infoWindowRef.current = null
       }
     }
-  }, [map, position.lat, position.lng, title, visibility])
+  }, [map, position.lat, position.lng, title, visibility, acceptsBids])
 
   return null
 }

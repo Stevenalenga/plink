@@ -22,6 +22,11 @@ import { SavedRoutesPanel } from "./route-components/saved-routes-panel"
 import { UnifiedAddDialog } from "./unified-add-dialog"
 import { useRouteNavigation } from "@/hooks/use-route-navigation"
 import { SavedRoute, RouteWaypoint } from "@/types"
+import { BidDialog } from "@/components/BidDialog"
+import { BidsPanel } from "@/components/BidsPanel"
+import { MyBidsPanel } from "@/components/MyBidsPanel"
+import { Button } from "@/components/ui/button"
+import { DollarSign } from "lucide-react"
 
 // Minimal global declarations to satisfy TS when Google Maps JS API loads at runtime
 declare global {
@@ -39,6 +44,7 @@ type Location = {
   visibility: 'public' | 'followers' | 'private'
   user_id: string
   url?: string | null
+  accepts_bids?: boolean
   users?: {
     id: string
     name: string
@@ -190,6 +196,13 @@ export function MapContainer() {
   
   // Unified add dialog state
   const [isUnifiedDialogOpen, setIsUnifiedDialogOpen] = useState(false)
+  
+  // Bidding state
+  const [isBidDialogOpen, setIsBidDialogOpen] = useState(false)
+  const [selectedLocationForBid, setSelectedLocationForBid] = useState<Location | null>(null)
+  const [showMyBidsPanel, setShowMyBidsPanel] = useState(false)
+  const [showBidsPanel, setShowBidsPanel] = useState(false)
+  const [selectedLocationForBidsPanel, setSelectedLocationForBidsPanel] = useState<Location | null>(null)
   
   // Navigation hook
   const routeNavigation = useRouteNavigation()
@@ -647,15 +660,13 @@ export function MapContainer() {
 
         // Add click listener to map
         googleMap.addListener("click", (event: any) => {
-          if (!event.latLng) return
-
-          if (!isAuthenticated) {
-            toast({
-              title: "Login Required",
-              description: "Please log in to save locations on the map",
-              variant: "destructive",
-            })
-            return
+          console.log("=== MAP CLICK EVENT ===");
+          console.log("Event:", event);
+          console.log("Has latLng:", !!event.latLng);
+          
+          if (!event.latLng) {
+            console.log("No latLng, returning");
+            return;
           }
 
           const clickedPosition = {
@@ -663,11 +674,21 @@ export function MapContainer() {
             lng: event.latLng.lng(),
           }
           
-          // Open unified dialog for location
+          console.log("Map clicked at coordinates:", clickedPosition)
+          console.log("Current isSaveDialogOpen state:", isSaveDialogOpen);
+          
+          // Update all state at once using batched updates
+          setLocationName("")
+          setLocationUrl("")
+          setVisibility("private")
           setSearchMarkerPosition(clickedPosition)
           setSelectedLocation(clickedPosition)
-          setIsUnifiedDialogOpen(true)
-        })        // Clear loading state
+          setIsSaveDialogOpen(true)
+          
+          console.log("Dialog state set to open, new value should be true")
+        })
+        
+        // Clear loading state
         setIsLoading(false)
 
       } catch (error: any) {
@@ -738,9 +759,13 @@ export function MapContainer() {
   
   // Debug dialog state
   useEffect(() => {
+    console.log("=== Dialog State Changed ===")
     console.log("Dialog open state:", isSaveDialogOpen);
     console.log("Selected location:", selectedLocation);
-  }, [isSaveDialogOpen, selectedLocation])
+    console.log("Location name:", locationName);
+    console.log("Search marker position:", searchMarkerPosition);
+    console.log("=========================")
+  }, [isSaveDialogOpen, selectedLocation, locationName, searchMarkerPosition])
 
   const saveLocationFromCoordinates = async (locationData: {
     lat: number
@@ -970,7 +995,8 @@ export function MapContainer() {
   )
 
   const handleContainerClick = useCallback((e: React.MouseEvent) => {
-    // Clear suggestions when clicking outside the search input area
+    // Only clear suggestions when clicking outside the search input area
+    // Don't interfere with dialog interactions
     if (suggestions.length > 0) {
       setSuggestions([])
     }
@@ -982,7 +1008,6 @@ export function MapContainer() {
       role="region" 
       aria-label="Map container" 
       aria-busy={isLoading}
-      onClick={handleContainerClick}
     >
       {isLoading && (
         <div className="absolute inset-0 flex items-center justify-center bg-gray-100 z-10">
@@ -1132,6 +1157,27 @@ export function MapContainer() {
           </button>
         </div>
         )}
+        
+        {/* My Bids Button */}
+        {isAuthenticated && (
+        <div className="pointer-events-auto">
+          <button
+            aria-label="View my bids"
+            onClick={() => setShowMyBidsPanel(!showMyBidsPanel)}
+            className="
+              h-12 w-12 rounded-full shadow-lg
+              bg-green-600 text-white
+              hover:bg-green-700
+              flex items-center justify-center
+              border border-border
+              transition-colors
+            "
+            title="My Bids"
+          >
+            <DollarSign className="h-5 w-5" />
+          </button>
+        </div>
+        )}
       </div>
 
       <div ref={mapRef} className="w-full h-full" />
@@ -1152,6 +1198,7 @@ export function MapContainer() {
           position={{ lat: location.lat, lng: location.lng }}
           title={location.name}
           visibility={location.visibility}
+          acceptsBids={location.accepts_bids}
           onClick={() => {
             // Close all other info windows
             infoWindows.current.forEach((window) => window.close())
@@ -1160,6 +1207,8 @@ export function MapContainer() {
             let infoWindow = infoWindows.current.get(location.id)
             if (!infoWindow) {
               const hasLink = location.url && location.url.trim() !== ""
+              const canBid = location.visibility === 'public' && location.accepts_bids && location.user_id !== user?.id
+              const isOwnerWithBids = location.user_id === user?.id && location.accepts_bids
               let linkElement = ""
               
               if (hasLink) {
@@ -1221,6 +1270,32 @@ export function MapContainer() {
                     
                     ${linkElement}
                     
+                    ${canBid ? `
+                      <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #e5e7eb;">
+                        <button 
+                          id="bid-button-${location.id}" 
+                          style="width: 100%; padding: 10px 16px; background-color: #10b981; color: white; border: none; border-radius: 6px; font-weight: 600; font-size: 0.875rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; transition: background-color 0.2s;"
+                          onmouseover="this.style.backgroundColor='#059669'" 
+                          onmouseout="this.style.backgroundColor='#10b981'">
+                          <span style="font-size: 1.125rem;">💰</span>
+                          Place a Bid
+                        </button>
+                      </div>
+                    ` : ''}
+                    
+                    ${isOwnerWithBids ? `
+                      <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #e5e7eb;">
+                        <button 
+                          id="view-bids-button-${location.id}" 
+                          style="width: 100%; padding: 10px 16px; background-color: #3b82f6; color: white; border: none; border-radius: 6px; font-weight: 600; font-size: 0.875rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; transition: background-color 0.2s;"
+                          onmouseover="this.style.backgroundColor='#2563eb'" 
+                          onmouseout="this.style.backgroundColor='#3b82f6'">
+                          <span style="font-size: 1.125rem;">💰</span>
+                          View Bids
+                        </button>
+                      </div>
+                    ` : ''}
+                    
                     ${location.users && location.user_id !== user?.id ? `
                       <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #e5e7eb; font-size: 0.875rem; color: #6b7280; display: flex; align-items: center; gap: 8px;">
                         <div style="width: 24px; height: 24px; border-radius: 50%; background-image: url('${location.users?.avatar_url || ''}'); background-size: cover; background-color: #e5e7eb;"></div>
@@ -1234,6 +1309,32 @@ export function MapContainer() {
                 `,
               })
               infoWindows.current.set(location.id, infoWindow)
+              
+              // Add event listener for bid button if it exists
+              if (canBid) {
+                window.google.maps.event.addListener(infoWindow, 'domready', () => {
+                  const bidButton = document.getElementById(`bid-button-${location.id}`)
+                  if (bidButton) {
+                    bidButton.addEventListener('click', () => {
+                      setSelectedLocationForBid(location)
+                      setIsBidDialogOpen(true)
+                    })
+                  }
+                })
+              }
+              
+              // Add event listener for view bids button if it exists
+              if (isOwnerWithBids) {
+                window.google.maps.event.addListener(infoWindow, 'domready', () => {
+                  const viewBidsButton = document.getElementById(`view-bids-button-${location.id}`)
+                  if (viewBidsButton) {
+                    viewBidsButton.addEventListener('click', () => {
+                      setSelectedLocationForBidsPanel(location)
+                      setShowBidsPanel(true)
+                    })
+                  }
+                })
+              }
             }
             
             if (map) {
@@ -1297,9 +1398,12 @@ export function MapContainer() {
           // Ensure dialog closes and inputs reset so it does not persist on page load
           setIsSaveDialogOpen(false)
           setSelectedLocation(null)
-          // do not clear destination/search marker; only close the UI
+          setSearchMarkerPosition(null)
+          setLocationName("")
+          setLocationUrl("")
+          setVisibility("private")
         }}
-        onSave={async (validatedUrl: string | null, expiresAt?: string | null, selectedFollowers?: string[]) => {  // Receive URL, expires_at, and selectedFollowers
+        onSave={async (validatedUrl: string | null, expiresAt?: string | null, selectedFollowers?: string[], acceptsBids?: boolean) => {  // Receive URL, expires_at, selectedFollowers, and acceptsBids
           // No need to validate again since dialog already did it
           
           if (!user) {
@@ -1356,6 +1460,7 @@ export function MapContainer() {
                 url: validatedUrl,
                 expires_at: expiresAt,
                 selectedFollowers: selectedFollowers,
+                accepts_bids: acceptsBids,
               }),
             })
 
@@ -1379,6 +1484,7 @@ export function MapContainer() {
             console.log("Closing dialog after saving location");
             setIsSaveDialogOpen(false);
             setSelectedLocation(null);
+            setSearchMarkerPosition(null);
             setLocationName("");
             setLocationUrl("")
           } catch (e: any) {
@@ -1514,6 +1620,75 @@ export function MapContainer() {
           }
         }}
       />
+      
+      {/* Bid Dialog */}
+      {selectedLocationForBid && (
+        <BidDialog
+          open={isBidDialogOpen}
+          onOpenChange={(open) => {
+            setIsBidDialogOpen(open)
+            if (!open) {
+              // Clear selected location when dialog closes
+              setSelectedLocationForBid(null)
+            }
+          }}
+          locationId={selectedLocationForBid.id}
+          locationName={selectedLocationForBid.name}
+          onBidCreated={() => {
+            toast({
+              title: "Success",
+              description: "Your bid has been submitted!",
+            })
+            setIsBidDialogOpen(false)
+            setSelectedLocationForBid(null)
+          }}
+        />
+      )}
+      
+      {/* My Bids Panel */}
+      {showMyBidsPanel && (
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-40 w-96 max-h-[80vh] overflow-y-auto">
+          <div className="bg-background rounded-lg shadow-xl border border-border">
+            <div className="p-4 border-b flex justify-end items-center">
+              <button
+                onClick={() => setShowMyBidsPanel(false)}
+                className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+              >
+                ✕
+              </button>
+            </div>
+            <MyBidsPanel />
+          </div>
+        </div>
+      )}
+      
+      {/* Bids Panel for Location Owners */}
+      {showBidsPanel && selectedLocationForBidsPanel && (
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-40 w-96 max-h-[80vh] overflow-y-auto">
+          <div className="bg-background rounded-lg shadow-xl border border-border">
+            <div className="p-4 border-b flex justify-between items-center">
+              <h3 className="font-semibold text-lg">Bids Received</h3>
+              <button
+                onClick={() => {
+                  setShowBidsPanel(false)
+                  setSelectedLocationForBidsPanel(null)
+                }}
+                className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+              >
+                ✕
+              </button>
+            </div>
+            <BidsPanel 
+              locationId={selectedLocationForBidsPanel.id}
+              locationName={selectedLocationForBidsPanel.name}
+              onClose={() => {
+                setShowBidsPanel(false)
+                setSelectedLocationForBidsPanel(null)
+              }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   )
 }

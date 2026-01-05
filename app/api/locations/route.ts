@@ -135,7 +135,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
     }
 
-    const { name, lat, lng, visibility = 'private', url, expires_at, selectedFollowers } = await request.json()
+    const { name, lat, lng, visibility = 'private', url, expires_at, selectedFollowers, accepts_bids = false } = await request.json()
 
     if (!name || typeof lat !== 'number' || typeof lng !== 'number') {
       return NextResponse.json({ error: 'Invalid data' }, { status: 400 })
@@ -162,6 +162,11 @@ export async function POST(request: NextRequest) {
     // Handle expiration for ALL visibility types (user-controlled)
     if (expires_at !== undefined) {
       locationData.expires_at = expires_at
+    }
+
+    // Handle accepts_bids for public locations
+    if (visibility === 'public' && accepts_bids !== undefined) {
+      locationData.accepts_bids = accepts_bids
     }
 
     const { data, error } = await supabase

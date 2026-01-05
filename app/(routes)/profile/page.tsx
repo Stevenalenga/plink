@@ -6,8 +6,9 @@ import { useUser } from "@/hooks/use-user"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { MapPin, RouteIcon, Settings, Share2, Trash2, Users, UserPlus, Edit3 } from "lucide-react"
+import { MapPin, RouteIcon, Settings, Share2, Trash2, Users, UserPlus, Edit3, DollarSign } from "lucide-react"
 import { supabase } from "@/lib/supabase"
+import { MyBidsPanel } from "@/components/MyBidsPanel"
 import { useToast } from "@/hooks/use-toast"
 import type { Tables } from "@/lib/supabase"
 import { formatLocation } from "@/lib/format-coordinates"
@@ -321,9 +322,10 @@ export default function ProfilePage() {
 
         <div className="md:w-2/3">
           <Tabs defaultValue="locations">
-            <TabsList className="grid w-full grid-cols-2">
+            <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="locations">My Locations</TabsTrigger>
               <TabsTrigger value="routes">My Routes</TabsTrigger>
+              <TabsTrigger value="bids">My Bids</TabsTrigger>
             </TabsList>
             <TabsContent value="locations" className="mt-4">
               <Card>
@@ -455,6 +457,20 @@ export default function ProfilePage() {
                       ))}
                     </div>
                   )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+            <TabsContent value="bids" className="mt-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <DollarSign className="h-5 w-5 text-green-600" />
+                    My Bids
+                  </CardTitle>
+                  <CardDescription>View and manage all your submitted bids</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <MyBidsPanel />
                 </CardContent>
               </Card>
             </TabsContent>
